@@ -7,6 +7,7 @@ from models.User import User
 from sqlalchemy.orm import Session
 
 from settings import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+from core.log import logger
 
 
 class OAuthGoogleService(BaseOAuthService):
@@ -15,7 +16,7 @@ class OAuthGoogleService(BaseOAuthService):
 
     def _register_provider(self):
         if not GOOGLE_CLIENT_SECRET or not GOOGLE_CLIENT_ID:
-            print("Warning: Google OAuth not configured - missing credentials")
+            logger.warning("Google OAuth not configured - missing credentials")
             return
 
         self.oauth.register(
