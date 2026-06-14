@@ -94,6 +94,9 @@ class StreamAnalyticsAggregate(BaseModel):
 
 class StreamAnalyticsSummaryResponse(BaseModel):
     overall: StreamAnalyticsAggregate
+
+
+class StreamAnalyticsListResponse(BaseModel):
     streams: list[StreamAnalyticsItem]
 
 

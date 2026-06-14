@@ -667,7 +667,7 @@ class TestStreaming(IsolatedAsyncioTestCase):
 
         # When
         response = client.get(
-            "/admin/streaming/analytics/summary",
+            "/streaming/analytics/summary",
             headers={"Authorization": f"Bearer {token}"},
         )
 
@@ -678,6 +678,15 @@ class TestStreaming(IsolatedAsyncioTestCase):
         self.assertEqual(data["overall"]["rewatch_qualified_watchers"], 1)
         self.assertEqual(data["overall"]["total_qualified_watchers"], 2)
         self.assertEqual(data["overall"]["total_watched_minutes"], 5)
+        self.assertEqual(data["overall"]["unique_watchers"], 2)
+
+        # Then test streams
+        response = client.get(
+            "/streaming/analytics/streams",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
         self.assertGreaterEqual(len(data["streams"]), 2)
         self.assertEqual(data["streams"][0]["stream_id"], str(stream_two.id))
         self.assertEqual(data["streams"][0]["status"], StreamStatus.STREAMING.value)

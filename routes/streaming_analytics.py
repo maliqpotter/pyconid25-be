@@ -30,12 +30,11 @@ from schemas.common import (
 )
 from schemas.streaming import (
     StreamAnalyticsDetailResponse,
+    StreamAnalyticsListResponse,
     StreamAnalyticsSummaryResponse,
 )
 
-router = APIRouter(
-    prefix="/admin/streaming/analytics", tags=["Admin Streaming Analytics"]
-)
+router = APIRouter(prefix="/streaming/analytics", tags=["Streaming Analytics"])
 
 
 def validate_admin(current_user: User | None):
@@ -82,19 +81,62 @@ def get_streaming_analytics_summary(
         overall = streamWatchRepo.get_analytics_overall(
             db=db, schedule_id=schedule_id, mode=watch_mode
         )
-        streams = streamWatchRepo.get_analytics_all_streams(
-            db=db, schedule_id=schedule_id, mode=watch_mode
-        )
         return common_response(
             Ok(
                 data=StreamAnalyticsSummaryResponse(
                     overall=overall,
-                    streams=streams,
                 ).model_dump(mode="json")
             )
         )
     except Exception as e:
         logger.error(f"Error fetching streaming analytics summary: {e}")
+        return common_response(InternalServerError(error=str(e)))
+
+
+@router.get(
+    "/streams",
+    responses={
+        "200": {"model": StreamAnalyticsListResponse},
+        "400": {"model": BadRequestResponse},
+        "401": {"model": UnauthorizedResponse},
+        "403": {"model": ForbiddenResponse},
+        "500": {"model": InternalServerErrorResponse},
+    },
+)
+def get_streaming_analytics_streams(
+    schedule_id: Optional[UUID] = None,
+    mode: Optional[str] = None,
+    db: Session = Depends(get_db_sync),
+    current_user: User | None = Depends(get_current_user),
+):
+    admin_error = validate_admin(current_user)
+    if admin_error:
+        return admin_error
+
+    try:
+        streamWatchRepo.end_abandoned_sessions(db)
+
+        watch_mode = None
+        if mode:
+            try:
+                watch_mode = WatchMode(mode.upper())
+            except ValueError:
+                return common_response(
+                    BadRequest(message="mode must be LIVE or REWATCH")
+                )
+
+        streams = streamWatchRepo.get_analytics_all_streams(
+            db=db, schedule_id=schedule_id, mode=watch_mode
+        )
+        return common_response(
+            Ok(
+                data=StreamAnalyticsListResponse(
+                    streams=streams,
+                ).model_dump(mode="json")
+            )
+        )
+    except Exception as e:
+        logger.error(f"Error fetching streaming analytics streams: {e}")
         return common_response(InternalServerError(error=str(e)))
 
 
