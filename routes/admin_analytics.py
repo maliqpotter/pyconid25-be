@@ -131,6 +131,7 @@ def get_streaming_analytics_detail(
                     rewatch_qualified_watchers=analytics["rewatch_qualified_watchers"],
                     total_qualified_watchers=analytics["total_qualified_watchers"],
                     total_watched_minutes=analytics["total_watched_minutes"],
+                    unique_watchers=analytics["unique_watchers"],
                 ).model_dump(mode="json")
             )
         )

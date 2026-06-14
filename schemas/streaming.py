@@ -81,6 +81,7 @@ class StreamAnalyticsItem(BaseModel):
     rewatch_qualified_watchers: int = 0
     total_qualified_watchers: int = 0
     total_watched_minutes: int = 0
+    unique_watchers: int = 0
 
 
 class StreamAnalyticsAggregate(BaseModel):
@@ -88,6 +89,7 @@ class StreamAnalyticsAggregate(BaseModel):
     rewatch_qualified_watchers: int = 0
     total_qualified_watchers: int = 0
     total_watched_minutes: int = 0
+    unique_watchers: int = 0
 
 
 class StreamAnalyticsSummaryResponse(BaseModel):
@@ -115,3 +117,4 @@ class StreamAnalyticsDetailResponse(BaseModel):
     rewatch_qualified_watchers: int = 0
     total_qualified_watchers: int = 0
     total_watched_minutes: int = 0
+    unique_watchers: int = 0

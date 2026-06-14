@@ -176,6 +176,7 @@ def get_analytics_by_schedule(
         "rewatch_qualified_watchers": rewatch,
         "total_qualified_watchers": stats.total_watchers or 0,
         "total_watched_minutes": int((stats.total_watched_seconds or 0) / 60),
+        "unique_watchers": stats.total_watchers or 0,
     }
 
 
@@ -235,6 +236,7 @@ def get_analytics_overall(
         "rewatch_qualified_watchers": rewatch,
         "total_qualified_watchers": stats.total_watchers or 0,
         "total_watched_minutes": int((stats.total_watched_seconds or 0) / 60),
+        "unique_watchers": stats.total_watchers or 0,
     }
 
 
