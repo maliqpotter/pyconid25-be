@@ -43,10 +43,13 @@ def get_all_user(
     if paritcipant_type:
         stmt = stmt.where(User.participant_type == paritcipant_type)
 
-    if is_organizer:
-        stmt = stmt.join(Organizer, User.organizer).where(
-            Organizer.user_id.is_not(None)
-        )
+    if is_organizer is not None:
+        stmt = stmt.join(Organizer, User.organizer, isouter=True)
+        if is_organizer is True:
+            stmt = stmt.where(Organizer.id.is_not(None))
+        else:
+            stmt = stmt.where(Organizer.id.is_(None))
+        stmt = stmt.distinct()
 
     stmt = stmt.order_by(User.email.asc())
     results = db.execute(stmt).scalars().all()
