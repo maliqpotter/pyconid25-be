@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from models.Stream import Stream, StreamStatus
 from models.StreamWatchSession import StreamWatchSession, WatchMode
-from settings import TZ
+from settings import TZ, STREAM_QUALIFIED_SECONDS
 
 
 def now_tz() -> datetime:
@@ -99,7 +99,7 @@ def update_heartbeat(
     session.watched_seconds += delta
     session.last_position_seconds = max(session.last_position_seconds, position_seconds)
     session.last_heartbeat_at = now
-    session.qualified = session.watched_seconds >= 60
+    session.qualified = session.watched_seconds >= STREAM_QUALIFIED_SECONDS
     session.updated_at = now
     db.commit()
     db.refresh(session)
