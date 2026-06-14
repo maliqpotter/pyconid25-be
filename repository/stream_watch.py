@@ -168,7 +168,9 @@ def get_analytics_by_schedule(
         )
 
     return {
-        "stream_id": str(schedule_id), # We don't have a specific stream_id for a schedule, but we need it for the response model
+        "stream_id": str(
+            schedule_id
+        ),  # We don't have a specific stream_id for a schedule, but we need it for the response model
         "schedule_id": str(schedule_id),
         "live_qualified_watchers": live,
         "rewatch_qualified_watchers": rewatch,
@@ -268,7 +270,9 @@ def get_analytics_all_streams(
     return data
 
 
-def get_watch_detail_by_schedule(db: Session, schedule_id: Union[UUID, str]) -> list[dict]:
+def get_watch_detail_by_schedule(
+    db: Session, schedule_id: Union[UUID, str]
+) -> list[dict]:
     stmt = (
         select(StreamWatchSession)
         .where(
@@ -308,10 +312,7 @@ def end_abandoned_sessions(db: Session, timeout_minutes: int = 5) -> int:
             StreamWatchSession.ended_at.is_(None),
             StreamWatchSession.last_heartbeat_at < timeout_threshold,
         )
-        .values(
-            ended_at=StreamWatchSession.last_heartbeat_at,
-            updated_at=now_tz()
-        )
+        .values(ended_at=StreamWatchSession.last_heartbeat_at, updated_at=now_tz())
     )
     result = db.execute(stmt)
     db.commit()
