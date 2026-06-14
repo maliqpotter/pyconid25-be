@@ -103,3 +103,9 @@ OTEL_EXPORTER_OTLP_ENDPOINT = os.environ.get(
 # File upload
 FILE_STORAGE_PATH = os.environ.get("FILE_STORAGE_PATH", "./storage")
 MAX_FILE_SIZE_MB = int(os.environ.get("MAX_FILE_SIZE_MB", "5"))
+
+# Scheduler Settings
+SCHEDULER_ABANDONED_SESSIONS_MIN = int(
+    os.environ.get("SCHEDULER_ABANDONED_SESSIONS_MIN", 5)
+)
+SCHEDULER_SYNC_PAYMENTS_MIN = int(os.environ.get("SCHEDULER_SYNC_PAYMENTS_MIN", 15))

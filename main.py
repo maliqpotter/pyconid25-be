@@ -23,6 +23,8 @@ from settings import (
     RATE_LIMIT_EXCLUDED_PATHS,
     RATE_LIMIT_PER_MINUTE,
     RATE_LIMIT_WINDOW,
+    SCHEDULER_ABANDONED_SESSIONS_MIN,
+    SCHEDULER_SYNC_PAYMENTS_MIN,
 )
 
 from core.telemetry import setup_telemetry
@@ -38,14 +40,14 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(
         task_end_abandoned_watch_sessions,
         "interval",
-        minutes=5,
+        minutes=SCHEDULER_ABANDONED_SESSIONS_MIN,
         id="cleanup_abandoned_watch_sessions",
         replace_existing=True,
     )
     scheduler.add_job(
         task_sync_pending_payments,
         "interval",
-        minutes=15,
+        minutes=SCHEDULER_SYNC_PAYMENTS_MIN,
         id="sync_pending_payments",
         replace_existing=True,
     )
