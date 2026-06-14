@@ -6,7 +6,10 @@ from pydantic import ValidationError
 from core.health_check import health_check
 from core.log import logger
 from core.scheduler import scheduler, start_scheduler, stop_scheduler
-from repository.tasks import task_end_abandoned_watch_sessions
+from repository.tasks import (
+    task_end_abandoned_watch_sessions,
+    task_sync_pending_payments,
+)
 from core.rate_limiter.memory import InMemoryRateLimiter
 from core.rate_limiter.middleware import RateLimitMiddleware
 from routes.auth import router as auth_router
@@ -44,6 +47,13 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=5,
         id="cleanup_abandoned_watch_sessions",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        task_sync_pending_payments,
+        "interval",
+        minutes=15,
+        id="sync_pending_payments",
         replace_existing=True,
     )
     start_scheduler()
