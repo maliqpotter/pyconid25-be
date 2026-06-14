@@ -4,6 +4,8 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from core.health_check import health_check
 from core.log import logger
+from core.scheduler import scheduler, start_scheduler, stop_scheduler
+from repository.tasks import task_end_abandoned_watch_sessions
 from core.rate_limiter.memory import InMemoryRateLimiter
 from core.rate_limiter.middleware import RateLimitMiddleware
 from routes.auth import router as auth_router
@@ -32,7 +34,25 @@ from settings import (
 
 health_check()
 
-app = FastAPI(title="PyconId 2025 BE")
+
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Setup scheduler tasks
+    scheduler.add_job(
+        task_end_abandoned_watch_sessions,
+        "interval",
+        minutes=5,
+        id="cleanup_abandoned_watch_sessions",
+        replace_existing=True,
+    )
+    start_scheduler()
+    yield
+    stop_scheduler()
+
+app = FastAPI(title="PyconId 2025 BE", lifespan=lifespan)
+
 
 app.add_middleware(
     CORSMiddleware,
