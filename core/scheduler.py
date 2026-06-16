@@ -24,6 +24,7 @@ _jobstore = SQLAlchemyJobStore(
     metadata=Base.metadata,
     tableschema="public",
 )
+_jobstore.jobs_t.create(_jobstore_engine, checkfirst=True)
 scheduler = BackgroundScheduler(jobstores={"default": _jobstore})
 
 

@@ -3,6 +3,7 @@
 from unittest import IsolatedAsyncioTestCase
 import importlib
 
+from core.scheduler import register_jobs, scheduler  # noqa: F401  ensure table creation
 from sqlalchemy import text
 
 from models import engine
@@ -21,11 +22,7 @@ class TestSchedulerJobStore(IsolatedAsyncioTestCase):
         self.assertEqual(row.table_schema, "public")
 
     def test_register_jobs_persists_into_jobstore(self):
-        from core.scheduler import (
-            register_jobs,
-            start_scheduler,
-            stop_scheduler,
-        )
+        from core.scheduler import start_scheduler, stop_scheduler
 
         with engine.begin() as conn:
             conn.execute(text("DELETE FROM apscheduler_jobs"))
@@ -49,8 +46,6 @@ class TestSchedulerJobStore(IsolatedAsyncioTestCase):
 
 class TestJobOverlapSafety(IsolatedAsyncioTestCase):
     def test_both_jobs_have_overlap_guards(self):
-        from core.scheduler import register_jobs, scheduler
-
         register_jobs()
         jobs = {j.id: j for j in scheduler.get_jobs()}
 
@@ -81,11 +76,7 @@ class TestWorkerHealthcheck(IsolatedAsyncioTestCase):
     def test_health_endpoint_reports_scheduler_state(self):
         from fastapi.testclient import TestClient
 
-        from core.scheduler import (
-            register_jobs,
-            start_scheduler,
-            stop_scheduler,
-        )
+        from core.scheduler import start_scheduler, stop_scheduler
         from worker.scheduler import _build_health_app
 
         app = _build_health_app()
@@ -124,7 +115,6 @@ class TestWorkerHealthcheck(IsolatedAsyncioTestCase):
 
 class TestSQLAlchemyJobStoreWiring(IsolatedAsyncioTestCase):
     def test_scheduler_uses_sqlalchemy_jobstore(self):
-        from core.scheduler import scheduler
         from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 
         store = scheduler._jobstores.get("default")  # type: ignore[attr-defined]
