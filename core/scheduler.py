@@ -1,11 +1,25 @@
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
+from sqlalchemy import create_engine
 
 from core.log import logger
-from models import Base, engine
+from models import Base
+from settings import (
+    POSTGRES_DATABASE,
+    POSTGRES_HOST,
+    POSTGRES_PASSWORD,
+    POSTGRES_PORT,
+    POSTGRES_USER,
+)
 
+_jobstore_engine = create_engine(
+    f"postgresql+psycopg://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DATABASE}",
+    pool_size=2,
+    max_overflow=0,
+    pool_pre_ping=True,
+)
 _jobstore = SQLAlchemyJobStore(
-    engine=engine,
+    engine=_jobstore_engine,
     tablename="apscheduler_jobs",
     metadata=Base.metadata,
     tableschema="public",
