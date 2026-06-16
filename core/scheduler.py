@@ -1,6 +1,8 @@
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
+from psycopg.errors import UniqueViolation
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 
 from core.log import logger
 from models import Base
@@ -24,7 +26,11 @@ _jobstore = SQLAlchemyJobStore(
     metadata=Base.metadata,
     tableschema="public",
 )
-_jobstore.jobs_t.create(_jobstore_engine, checkfirst=True)
+try:
+    _jobstore.jobs_t.create(_jobstore_engine, checkfirst=True)
+except IntegrityError as e:
+    if not isinstance(e.orig, UniqueViolation):
+        raise
 scheduler = BackgroundScheduler(jobstores={"default": _jobstore})
 
 
