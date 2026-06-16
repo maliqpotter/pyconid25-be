@@ -6,8 +6,12 @@ from models.Payment import PaymentStatus
 from models import db as db_factory
 from core.log import logger
 import asyncio
-from core.telemetry import get_tracer
+from core.telemetry import get_tracer, record_task_failure
 from opentelemetry import trace
+
+
+TASK_END_ABANDONED = "task_end_abandoned_watch_sessions"
+TASK_SYNC_PAYMENTS = "task_sync_pending_payments"
 
 
 def task_end_abandoned_watch_sessions():
@@ -16,7 +20,7 @@ def task_end_abandoned_watch_sessions():
     where users disconnected without properly ending their session.
     """
     tracer = get_tracer()
-    with tracer.start_as_current_span("task_end_abandoned_watch_sessions") as span:
+    with tracer.start_as_current_span(TASK_END_ABANDONED) as span:
         db = db_factory()
         try:
             count = end_abandoned_sessions(db, timeout_minutes=5)
@@ -25,6 +29,7 @@ def task_end_abandoned_watch_sessions():
         except Exception as e:
             span.record_exception(e)
             span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+            record_task_failure(TASK_END_ABANDONED)
             logger.error(f"Error executing task_end_abandoned_watch_sessions: {e}")
         finally:
             db.close()
@@ -32,10 +37,10 @@ def task_end_abandoned_watch_sessions():
 
 async def async_sync_pending_payments():
     tracer = get_tracer()
-    with tracer.start_as_current_span("task_sync_pending_payments") as span:
+    with tracer.start_as_current_span(TASK_SYNC_PAYMENTS) as span:
         db = db_factory()
-        mayar_service = MayarService(api_key=MAYAR_API_KEY, base_url=MAYAR_BASE_URL)
         try:
+            mayar_service = MayarService(api_key=MAYAR_API_KEY, base_url=MAYAR_BASE_URL)
             from sqlalchemy import select
             from models.Payment import Payment
 
@@ -78,6 +83,7 @@ async def async_sync_pending_payments():
         except Exception as e:
             span.record_exception(e)
             span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+            record_task_failure(TASK_SYNC_PAYMENTS)
             logger.error(f"Error executing task_sync_pending_payments: {e}")
         finally:
             db.close()

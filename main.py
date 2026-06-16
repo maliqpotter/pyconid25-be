@@ -1,4 +1,3 @@
-from contextlib import asynccontextmanager
 import time
 
 from fastapi import FastAPI, Request
@@ -10,11 +9,6 @@ from pydantic import ValidationError
 
 from core.health_check import health_check
 from core.log import logger
-from core.scheduler import scheduler, start_scheduler, stop_scheduler
-from repository.tasks import (
-    task_end_abandoned_watch_sessions,
-    task_sync_pending_payments,
-)
 from core.rate_limiter.memory import InMemoryRateLimiter
 from core.rate_limiter.middleware import RateLimitMiddleware
 
@@ -23,8 +17,6 @@ from settings import (
     RATE_LIMIT_EXCLUDED_PATHS,
     RATE_LIMIT_PER_MINUTE,
     RATE_LIMIT_WINDOW,
-    SCHEDULER_ABANDONED_SESSIONS_MIN,
-    SCHEDULER_SYNC_PAYMENTS_MIN,
 )
 
 from core.telemetry import setup_telemetry
@@ -34,29 +26,7 @@ otel_enabled = setup_telemetry()
 health_check()
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Setup scheduler tasks
-    scheduler.add_job(
-        task_end_abandoned_watch_sessions,
-        "interval",
-        minutes=SCHEDULER_ABANDONED_SESSIONS_MIN,
-        id="cleanup_abandoned_watch_sessions",
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        task_sync_pending_payments,
-        "interval",
-        minutes=SCHEDULER_SYNC_PAYMENTS_MIN,
-        id="sync_pending_payments",
-        replace_existing=True,
-    )
-    start_scheduler()
-    yield
-    stop_scheduler()
-
-
-app = FastAPI(title="PyconId 2025 BE", lifespan=lifespan)
+app = FastAPI(title="PyconId 2025 BE")
 
 
 @app.middleware("http")
