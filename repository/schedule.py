@@ -11,6 +11,7 @@ from sqlalchemy.sql.operators import or_
 from models.Schedule import Schedule
 from models.Speaker import Speaker
 from schemas.schedule import ScheduleResponseItem
+from core.log import logger
 
 
 def get_all_schedules(
@@ -57,7 +58,7 @@ def get_all_schedules(
         results = db.scalars(stmt).all()
         results_schema = [ScheduleResponseItem.model_validate(r) for r in results]
     except Exception as e:
-        print("Error in model validation:", str(e))
+        logger.error(f"Error in model validation: {e}")
     # Hitung total halaman
 
     # Return hasil dalam bentuk dict (siap untuk API response)
@@ -117,7 +118,7 @@ def get_schedule_per_page_by_search(
         results = db.scalars(stmt).all()
         results_schema = [ScheduleResponseItem.model_validate(r) for r in results]
     except Exception as e:
-        print("Error in model validation:", str(e))
+        logger.error(f"Error in model validation: {e}")
     # Hitung total halaman
     page_count = (total_count + page_size - 1) // page_size if total_count else 0
 

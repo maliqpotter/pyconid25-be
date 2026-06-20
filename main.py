@@ -25,6 +25,7 @@ otel_enabled = setup_telemetry()
 
 health_check()
 
+
 app = FastAPI(title="PyconId 2025 BE")
 
 
@@ -84,6 +85,7 @@ from routes.schedule_type import router as schedule_type_router  # noqa: E402
 from routes.speaker import router as speaker_router  # noqa: E402
 from routes.speaker_type import router as speaker_type_router  # noqa: E402
 from routes.streaming import router as streaming_router  # noqa: E402
+from routes.streaming_analytics import router as streaming_analytics_router  # noqa: E402
 from routes.ticket import router as ticket_router  # noqa: E402
 from routes.user_profile import router as user_profile_router  # noqa: E402
 from routes.volunteer import router as volunteer_router  # noqa: E402
@@ -98,6 +100,7 @@ app.include_router(speaker_router)
 app.include_router(schedule_router)
 app.include_router(payment_router)
 app.include_router(streaming_router)
+app.include_router(streaming_analytics_router)
 app.include_router(voucher_router)
 app.include_router(speaker_type_router)
 app.include_router(organizer_type_router)

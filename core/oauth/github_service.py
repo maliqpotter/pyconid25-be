@@ -7,6 +7,7 @@ from models.User import User
 from sqlalchemy.orm import Session
 
 from settings import GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+from core.log import logger
 
 
 class OAuthGithubService(BaseOAuthService):
@@ -15,7 +16,7 @@ class OAuthGithubService(BaseOAuthService):
 
     def _register_provider(self):
         if not GITHUB_CLIENT_SECRET or not GITHUB_CLIENT_ID:
-            print("Warning: GitHub OAuth not configured - missing credentials")
+            logger.warning("GitHub OAuth not configured - missing credentials")
             return
 
         self.oauth.register(
