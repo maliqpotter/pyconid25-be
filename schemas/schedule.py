@@ -4,7 +4,13 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import Query
-from pydantic import BaseModel, Field, model_serializer, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from models.Stream import StreamStatus
 from schemas.speaker_type import DetailSpeakerResponse
@@ -23,9 +29,31 @@ class ScheduleQuery(BaseModel):
     all: Optional[bool] = Query(None, description="Return all schedule data if true")
 
 
+class ScheduleSpeakerInput(BaseModel):
+    """Payload for a single speaker on create/update schedule.
+
+    ``order`` determines display order (consistent with frontend) and ``type``
+    stores the speaker role (e.g. "Main Speaker" / "Co Speaker").
+    """
+
+    speaker_id: UUID
+    order: int = Field(ge=1, description="Display order, minimum 1")
+    type: str = Field(
+        min_length=1,
+        description="Speaker role, e.g. 'Main Speaker' / 'Co Speaker'",
+    )
+
+    @field_validator("order")
+    @classmethod
+    def validate_order(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("order must be >= 1")
+        return v
+
+
 class CreateScheduleRequest(BaseModel):
     title: str
-    speaker_id: Optional[UUID] = None
+    speakers: Optional[List[ScheduleSpeakerInput]] = None
     room_id: UUID
     schedule_type_id: UUID
     description: Optional[str] = None
@@ -38,14 +66,22 @@ class CreateScheduleRequest(BaseModel):
 
     @model_validator(mode="after")
     def check_dates(self):
-        if self.end < self.start:
-            raise ValueError("End time must be not be less than start time")
+        if self.end <= self.start:
+            raise ValueError("end must be after start")
+        return self
+
+    @model_validator(mode="after")
+    def check_speakers_duplicate_order(self):
+        if self.speakers:
+            orders = [s.order for s in self.speakers]
+            if len(orders) != len(set(orders)):
+                raise ValueError("duplicate order in speakers")
         return self
 
 
 class UpdateScheduleRequest(BaseModel):
-    title: str
-    speaker_id: Optional[UUID] = None
+    title: Optional[str] = None
+    speakers: Optional[List[ScheduleSpeakerInput]] = None
     room_id: UUID
     schedule_type_id: UUID
     description: Optional[str] = None
@@ -58,8 +94,16 @@ class UpdateScheduleRequest(BaseModel):
 
     @model_validator(mode="after")
     def check_dates(self):
-        if self.end < self.start:
-            raise ValueError("End time must be not be less than start time")
+        if self.end <= self.start:
+            raise ValueError("End time must not less than start time")
+        return self
+
+    @model_validator(mode="after")
+    def check_speakers_duplicate_order(self):
+        if self.speakers:
+            orders = [s.order for s in self.speakers]
+            if len(orders) != len(set(orders)):
+                raise ValueError("duplicate order in speakers")
         return self
 
 
@@ -136,10 +180,22 @@ class PublicSpeakerInfo(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ScheduleSpeakerItem(BaseModel):
+    """One speaker entry in the schedule response (many-to-many).
+
+    Stores junction metadata (``order``, ``type``) plus the speaker data.
+    """
+
+    order: int
+    type: str
+    speaker: PublicSpeakerInfo
+    model_config = {"from_attributes": True}
+
+
 class PublicScheduleDetail(BaseModel):
     id: UUID
     title: str
-    speaker: Optional[PublicSpeakerInfo] = None
+    speakers: List[ScheduleSpeakerItem] = []
     room: RoomInfo
     schedule_type: ScheduleTypeInfo
     description: Optional[str] = None
@@ -175,7 +231,7 @@ class SimplePublicSpeakerInfo(BaseModel):
 class ScheduleDetail(BaseModel):
     id: UUID
     title: str
-    speaker: Optional[SimplePublicSpeakerInfo] = None
+    speakers: List[ScheduleSpeakerItem] = []
     room: RoomInfo
     schedule_type: ScheduleTypeInfo
     description: Optional[str] = None
@@ -195,7 +251,7 @@ class ScheduleDetail(BaseModel):
 class ScheduleResponseItem(BaseModel):
     id: UUID
     title: str
-    speaker: Optional[SimplePublicSpeakerInfo] = None
+    speakers: List[ScheduleSpeakerItem] = []
     room: RoomInfo
     schedule_type: ScheduleTypeInfo
     presentation_language: Optional[Language] = None
@@ -227,7 +283,7 @@ class MuxStreamDetail(BaseModel):
 class ScheduleCMSResponseItem(BaseModel):
     id: str
     title: str
-    speaker: Optional[SimplePublicSpeakerInfo] = None
+    speakers: List[ScheduleSpeakerItem] = []
     room: RoomInfo
     schedule_type: ScheduleTypeInfo
     stream_key: Optional[str] = None

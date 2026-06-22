@@ -13,10 +13,22 @@ from models.Room import Room
 from models.Schedule import Schedule
 from models.ScheduleType import ScheduleType
 from models.Speaker import Speaker
+from models.SpeakerSchedule import SpeakerSchedule
 from models.SpeakerType import SpeakerType
 from models.Stream import Stream, StreamStatus
 from models.User import MANAGEMENT_PARTICIPANT, User
 from schemas.user_profile import ParticipantType
+
+
+def _attach_speaker(db_session, schedule, speaker, order=1, type_="Main Speaker"):
+    """Helper: attach a speaker to a schedule via the speaker_schedule junction."""
+    junction = SpeakerSchedule(
+        speaker_id=speaker.id,
+        schedule_id=schedule.id,
+        type=type_,
+        order=order,
+    )
+    db_session.add(junction)
 
 
 class TestSchedule(IsolatedAsyncioTestCase):
@@ -74,6 +86,23 @@ class TestSchedule(IsolatedAsyncioTestCase):
         )
         self.db.add(self.speaker)
 
+        self.user_speaker_2 = User(
+            username="speaker_user_2",
+            first_name="John",
+            last_name="Doe",
+            bio="Second expert speaker",
+            email="john@example.com",
+            share_my_email_and_phone_number=True,
+            share_my_job_and_company=False,
+            share_my_public_social_media=False,
+        )
+        self.db.add(self.user_speaker_2)
+        self.speaker_2 = Speaker(
+            user=self.user_speaker_2,
+            speaker_type=self.speaker_type,
+        )
+        self.db.add(self.speaker_2)
+
         self.db.commit()
 
     @patch("core.mux_service.mux_service.create_live_stream")
@@ -94,7 +123,13 @@ class TestSchedule(IsolatedAsyncioTestCase):
 
         payload = {
             "title": "Python Best Practices",
-            "speaker_id": str(self.speaker.id),
+            "speakers": [
+                {
+                    "speaker_id": str(self.speaker.id),
+                    "order": 1,
+                    "type": "Main Speaker",
+                }
+            ],
             "room_id": str(self.room.id),
             "schedule_type_id": str(self.schedule_type.id),
             "description": "Learn Python best practices",
@@ -117,7 +152,10 @@ class TestSchedule(IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data["title"], "Python Best Practices")
-        self.assertEqual(data["speaker"]["id"], str(self.speaker.id))
+        self.assertEqual(len(data["speakers"]), 1)
+        self.assertEqual(data["speakers"][0]["speaker"]["id"], str(self.speaker.id))
+        self.assertEqual(data["speakers"][0]["order"], 1)
+        self.assertEqual(data["speakers"][0]["type"], "Main Speaker")
         mock_create_stream.assert_called_once_with(is_public=True)
 
     @patch("core.mux_service.mux_service.create_live_stream")
@@ -138,7 +176,6 @@ class TestSchedule(IsolatedAsyncioTestCase):
 
         payload = {
             "title": "Schedule Without Speaker",
-            "speaker_id": None,
             "room_id": str(self.room.id),
             "schedule_type_id": str(self.schedule_type.id),
             "description": "Schedule without speaker",
@@ -160,11 +197,15 @@ class TestSchedule(IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data["title"], "Schedule Without Speaker")
-        self.assertIsNone(data["speaker"])
+        self.assertEqual(data["speakers"], [])
         mock_create_stream.assert_called_once_with(is_public=True)
 
     @patch("core.mux_service.mux_service.create_live_stream")
-    async def test_create_schedule_speaker_already_scheduled(self, mock_create_stream):
+    async def test_create_schedule_multi_speaker_allowed(self, mock_create_stream):
+        # """After the relationship became many-to-many, one speaker may appear in multiple
+        # schedules (e.g. as a co-speaker in a panel). Creating a second schedule with the
+        # same speaker MUST be allowed (replacing the old test that expected a 422)
+        # "speaker_already_scheduled").
         # Given
         mock_create_stream.return_value = (
             "mux_stream_123",
@@ -172,12 +213,10 @@ class TestSchedule(IsolatedAsyncioTestCase):
             "playback_id_123",
         )
 
-        # Buat schedule awal dengan speaker ini
         start_time = datetime.now() + timedelta(hours=1)
         end_time = start_time + timedelta(hours=1)
         existing_schedule = Schedule(
             title="Existing Schedule",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Existing schedule for speaker",
@@ -188,21 +227,28 @@ class TestSchedule(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(existing_schedule)
+        self.db.flush()
+        _attach_speaker(self.db, existing_schedule, self.speaker)
         self.db.commit()
 
         token, _ = await generate_token_from_user(db=self.db, user=self.user_management)
         app.dependency_overrides[get_db_sync] = get_db_sync_for_test(db=self.db)
         client = TestClient(app)
 
-        # Payload dengan speaker yang sudah terpakai di schedule lain
         new_start = datetime.now() + timedelta(hours=3)
         new_end = new_start + timedelta(hours=1)
         payload = {
-            "title": "Duplicate Speaker Schedule",
-            "speaker_id": str(self.speaker.id),
+            "title": "Second Schedule Same Speaker",
+            "speakers": [
+                {
+                    "speaker_id": str(self.speaker.id),
+                    "order": 1,
+                    "type": "Main Speaker",
+                }
+            ],
             "room_id": str(self.room.id),
             "schedule_type_id": str(self.schedule_type.id),
-            "description": "Should fail because speaker already scheduled",
+            "description": "Should succeed: multi-speaker feature allows this",
             "presentation_language": "English",
             "slide_language": "English",
             "slide_link": "https://slides.example.com",
@@ -219,13 +265,8 @@ class TestSchedule(IsolatedAsyncioTestCase):
         )
 
         # Expect
-        self.assertEqual(response.status_code, 400)
-        data = response.json()
-        self.assertEqual(
-            data["message"], "Speaker is already scheduled for another session"
-        )
-        # Pastikan tidak membuat stream baru
-        mock_create_stream.assert_not_called()
+        self.assertEqual(response.status_code, 201)
+        mock_create_stream.assert_called_once_with(is_public=True)
 
     async def test_create_schedule_unauthorized(self):
         # Given
@@ -240,7 +281,13 @@ class TestSchedule(IsolatedAsyncioTestCase):
 
         payload = {
             "title": "Test Schedule",
-            "speaker_id": str(self.speaker.id),
+            "speakers": [
+                {
+                    "speaker_id": str(self.speaker.id),
+                    "order": 1,
+                    "type": "Main Speaker",
+                }
+            ],
             "room_id": str(self.room.id),
             "schedule_type_id": str(self.schedule_type.id),
             "description": "Test",
@@ -268,7 +315,6 @@ class TestSchedule(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="Original Title",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Original description",
@@ -279,6 +325,8 @@ class TestSchedule(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule)
+        self.db.flush()
+        _attach_speaker(self.db, schedule, self.speaker)
         self.db.commit()
 
         token, _ = await generate_token_from_user(db=self.db, user=self.user_management)
@@ -288,7 +336,13 @@ class TestSchedule(IsolatedAsyncioTestCase):
         payload = {
             "title": "Updated Title",
             "room_id": str(self.room.id),
-            "speaker_id": str(self.speaker.id),
+            "speakers": [
+                {
+                    "speaker_id": str(self.speaker.id),
+                    "order": 1,
+                    "type": "Main Speaker",
+                }
+            ],
             "schedule_type_id": str(self.schedule_type.id),
             "description": "Updated description",
             "presentation_language": "English",
@@ -311,14 +365,13 @@ class TestSchedule(IsolatedAsyncioTestCase):
         self.assertEqual(data["title"], "Updated Title")
         self.assertEqual(data["description"], "Updated description")
 
-    async def test_update_schedule_clear_speaker(self):
+    async def test_update_schedule_clear_speakers(self):
         # Given
         start_time = datetime.now() + timedelta(hours=1)
         end_time = start_time + timedelta(hours=1)
 
         schedule = Schedule(
             title="Schedule With Speaker",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Has speaker initially",
@@ -329,6 +382,8 @@ class TestSchedule(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule)
+        self.db.flush()
+        _attach_speaker(self.db, schedule, self.speaker)
         self.db.commit()
 
         token, _ = await generate_token_from_user(db=self.db, user=self.user_management)
@@ -338,7 +393,7 @@ class TestSchedule(IsolatedAsyncioTestCase):
         payload = {
             "title": "Schedule Without Speaker",
             "room_id": str(self.room.id),
-            "speaker_id": None,
+            "speakers": [],
             "schedule_type_id": str(self.schedule_type.id),
             "description": "Speaker cleared",
             "presentation_language": "English",
@@ -359,17 +414,18 @@ class TestSchedule(IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["title"], "Schedule Without Speaker")
-        self.assertIsNone(data["speaker"])
+        self.assertEqual(data["speakers"], [])
 
-    async def test_update_schedule_speaker_already_scheduled_in_other_schedule(self):
+    async def test_update_schedule_speaker_can_be_shared_across_schedules(self):
+        # After many-to-many, assigning a speaker already used in another
+        # schedule MUST succeed (replacing the old test)
+        # "speaker_already_scheduled_in_other_schedule").
         # Given
         start_time = datetime.now() + timedelta(hours=1)
         end_time = start_time + timedelta(hours=1)
 
-        # schedule yang akan diupdate (awal tanpa speaker)
         schedule_to_update = Schedule(
             title="Schedule To Update",
-            speaker_id=None,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Schedule that will be updated",
@@ -381,10 +437,8 @@ class TestSchedule(IsolatedAsyncioTestCase):
         )
         self.db.add(schedule_to_update)
 
-        # schedule lain yang sudah memakai speaker ini
         other_schedule = Schedule(
             title="Other Schedule With Speaker",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Other schedule using this speaker",
@@ -395,6 +449,8 @@ class TestSchedule(IsolatedAsyncioTestCase):
             end=end_time + timedelta(hours=2),
         )
         self.db.add(other_schedule)
+        self.db.flush()
+        _attach_speaker(self.db, other_schedule, self.speaker)
         self.db.commit()
 
         token, _ = await generate_token_from_user(db=self.db, user=self.user_management)
@@ -404,9 +460,15 @@ class TestSchedule(IsolatedAsyncioTestCase):
         payload = {
             "title": "Schedule To Update",
             "room_id": str(self.room.id),
-            "speaker_id": str(self.speaker.id),
+            "speakers": [
+                {
+                    "speaker_id": str(self.speaker.id),
+                    "order": 1,
+                    "type": "Co Speaker",
+                }
+            ],
             "schedule_type_id": str(self.schedule_type.id),
-            "description": "Try assign speaker already used in other schedule",
+            "description": "Assign shared speaker",
             "presentation_language": "English",
             "slide_language": "English",
             "tags": ["python"],
@@ -422,11 +484,7 @@ class TestSchedule(IsolatedAsyncioTestCase):
         )
 
         # Expect
-        self.assertEqual(response.status_code, 400)
-        data = response.json()
-        self.assertEqual(
-            data["message"], "Speaker is already scheduled for another session"
-        )
+        self.assertEqual(response.status_code, 200)
 
     async def test_update_schedule_not_found(self):
         # Given
@@ -440,7 +498,13 @@ class TestSchedule(IsolatedAsyncioTestCase):
         payload = {
             "title": "Updated Title",
             "room_id": str(self.room.id),
-            "speaker_id": str(self.speaker.id),
+            "speakers": [
+                {
+                    "speaker_id": str(self.speaker.id),
+                    "order": 1,
+                    "type": "Main Speaker",
+                }
+            ],
             "schedule_type_id": str(self.schedule_type.id),
             "start": str(start_time),
             "end": str(end_time),
@@ -465,7 +529,6 @@ class TestSchedule(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="Schedule to Delete",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description",
@@ -476,6 +539,8 @@ class TestSchedule(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule)
+        self.db.flush()
+        _attach_speaker(self.db, schedule, self.speaker)
         self.db.commit()
 
         stream = Stream(
@@ -512,7 +577,6 @@ class TestSchedule(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="Test Schedule",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description",
@@ -523,6 +587,8 @@ class TestSchedule(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule)
+        self.db.flush()
+        _attach_speaker(self.db, schedule, self.speaker)
         self.db.commit()
 
         app.dependency_overrides[get_db_sync] = get_db_sync_for_test(db=self.db)
@@ -535,8 +601,10 @@ class TestSchedule(IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["title"], "Test Schedule")
-        self.assertEqual(data["speaker"]["user"]["email"], "jane@example.com")
-        self.assertIsNone(data["speaker"]["user"]["company"])
+        self.assertEqual(
+            data["speakers"][0]["speaker"]["user"]["email"], "jane@example.com"
+        )
+        self.assertIsNone(data["speakers"][0]["speaker"]["user"]["company"])
 
     async def test_get_schedule_by_id_without_speaker(self):
         # Given
@@ -545,7 +613,6 @@ class TestSchedule(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="Schedule Without Speaker",
-            speaker_id=None,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="No speaker",
@@ -568,7 +635,7 @@ class TestSchedule(IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["title"], "Schedule Without Speaker")
-        self.assertIsNone(data["speaker"])
+        self.assertEqual(data["speakers"], [])
 
     async def test_get_schedule_by_id_not_found(self):
         # Given
@@ -589,7 +656,6 @@ class TestSchedule(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="CMS Test Schedule",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description",
@@ -600,6 +666,8 @@ class TestSchedule(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule)
+        self.db.flush()
+        _attach_speaker(self.db, schedule, self.speaker)
         self.db.commit()
 
         stream = Stream(
@@ -639,7 +707,6 @@ class TestSchedule(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="CMS Test Schedule",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description",
@@ -687,7 +754,6 @@ class TestSchedule(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="CMS Schedule Without Speaker",
-            speaker_id=None,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="CMS no speaker",
@@ -730,7 +796,7 @@ class TestSchedule(IsolatedAsyncioTestCase):
         result = next(
             r for r in data["results"] if r["title"] == "CMS Schedule Without Speaker"
         )
-        self.assertIsNone(result["speaker"])
+        self.assertEqual(result["speakers"], [])
         self.assertEqual(result["stream_key"], "stream_key_456")
 
     async def test_get_mux_stream_by_schedule_id_success(self):
@@ -740,7 +806,6 @@ class TestSchedule(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="Stream Test Schedule",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description",
@@ -751,6 +816,8 @@ class TestSchedule(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule)
+        self.db.flush()
+        _attach_speaker(self.db, schedule, self.speaker)
         self.db.commit()
 
         stream = Stream(
@@ -790,7 +857,6 @@ class TestSchedule(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="Stream Test Schedule",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description",
@@ -835,7 +901,6 @@ class TestSchedule(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="Recreate Stream Test",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description",
@@ -846,6 +911,8 @@ class TestSchedule(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule)
+        self.db.flush()
+        _attach_speaker(self.db, schedule, self.speaker)
         self.db.commit()
 
         stream = Stream(
@@ -887,7 +954,6 @@ class TestSchedule(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="Streaming Schedule",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description",
@@ -898,6 +964,8 @@ class TestSchedule(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule)
+        self.db.flush()
+        _attach_speaker(self.db, schedule, self.speaker)
         self.db.commit()
 
         stream = Stream(
@@ -935,7 +1003,6 @@ class TestSchedule(IsolatedAsyncioTestCase):
 
         schedule1 = Schedule(
             title="Schedule 1",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description 1",
@@ -946,10 +1013,11 @@ class TestSchedule(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule1)
+        self.db.flush()
+        _attach_speaker(self.db, schedule1, self.speaker)
 
         schedule2 = Schedule(
             title="Schedule 2",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description 2",
@@ -960,6 +1028,8 @@ class TestSchedule(IsolatedAsyncioTestCase):
             end=end_time + timedelta(hours=2),
         )
         self.db.add(schedule2)
+        self.db.flush()
+        _attach_speaker(self.db, schedule2, self.speaker)
         self.db.commit()
 
         app.dependency_overrides[get_db_sync] = get_db_sync_for_test(db=self.db)
@@ -981,7 +1051,6 @@ class TestSchedule(IsolatedAsyncioTestCase):
 
         schedule_with_speaker = Schedule(
             title="Schedule With Speaker",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Has speaker",
@@ -992,10 +1061,11 @@ class TestSchedule(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule_with_speaker)
+        self.db.flush()
+        _attach_speaker(self.db, schedule_with_speaker, self.speaker)
 
         schedule_without_speaker = Schedule(
             title="Schedule Without Speaker In List",
-            speaker_id=None,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="No speaker in list",
@@ -1026,7 +1096,7 @@ class TestSchedule(IsolatedAsyncioTestCase):
             for item in data["results"]
             if item["title"] == "Schedule Without Speaker In List"
         )
-        self.assertIsNone(schedule_without_speaker_data["speaker"])
+        self.assertEqual(schedule_without_speaker_data["speakers"], [])
 
     async def test_get_schedule_list_with_search(self):
         # Given
@@ -1035,7 +1105,6 @@ class TestSchedule(IsolatedAsyncioTestCase):
 
         schedule1 = Schedule(
             title="Python Advanced",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Advanced Python topics",
@@ -1046,10 +1115,11 @@ class TestSchedule(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule1)
+        self.db.flush()
+        _attach_speaker(self.db, schedule1, self.speaker)
 
         schedule2 = Schedule(
             title="Django Basics",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Basic Django",
@@ -1060,6 +1130,8 @@ class TestSchedule(IsolatedAsyncioTestCase):
             end=end_time + timedelta(hours=2),
         )
         self.db.add(schedule2)
+        self.db.flush()
+        _attach_speaker(self.db, schedule2, self.speaker)
         self.db.commit()
 
         app.dependency_overrides[get_db_sync] = get_db_sync_for_test(db=self.db)
@@ -1074,6 +1146,211 @@ class TestSchedule(IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertGreater(data["count"], 0)
+
+    async def test_create_schedule_duplicate_order_rejected(self):
+        """Create a schedule with duplicate speaker orders should return 422."""
+        # Given
+        start_time = datetime.now() + timedelta(hours=1)
+        end_time = start_time + timedelta(hours=1)
+
+        token, _ = await generate_token_from_user(db=self.db, user=self.user_management)
+        app.dependency_overrides[get_db_sync] = get_db_sync_for_test(db=self.db)
+        client = TestClient(app)
+
+        # When - same order=1 for both speakers
+        response = client.post(
+            "/schedule/",
+            json={
+                "title": "Duplicate Order Test",
+                "room_id": str(self.room.id),
+                "schedule_type_id": str(self.schedule_type.id),
+                "speakers": [
+                    {
+                        "speaker_id": str(self.speaker.id),
+                        "order": 1,
+                        "type": "Main Speaker",
+                    },
+                    {
+                        "speaker_id": str(self.speaker_2.id),
+                        "order": 1,
+                        "type": "Co Speaker",
+                    },
+                ],
+                "description": "Test duplicate order",
+                "presentation_language": "English",
+                "slide_language": "English",
+                "tags": ["test"],
+                "start": start_time.isoformat(),
+                "end": end_time.isoformat(),
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        # Expect - 422 Unprocessable Entity
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("duplicate order", response.text.lower())
+
+    async def test_create_schedule_invalid_type_rejected(self):
+        """Create a schedule with an invalid speaker type should return 422."""
+        # Given
+        start_time = datetime.now() + timedelta(hours=1)
+        end_time = start_time + timedelta(hours=1)
+
+        token, _ = await generate_token_from_user(db=self.db, user=self.user_management)
+        app.dependency_overrides[get_db_sync] = get_db_sync_for_test(db=self.db)
+        client = TestClient(app)
+
+        # When - invalid type
+        response = client.post(
+            "/schedule/",
+            json={
+                "title": "Invalid Type Test",
+                "room_id": str(self.room.id),
+                "schedule_type_id": str(self.schedule_type.id),
+                "speakers": [
+                    {
+                        "speaker_id": str(self.speaker.id),
+                        "order": 1,
+                        "type": "InvalidRole",
+                    },
+                ],
+                "description": "Test invalid type",
+                "presentation_language": "English",
+                "slide_language": "English",
+                "tags": ["test"],
+                "start": start_time.isoformat(),
+                "end": end_time.isoformat(),
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        # Expect - 422 Unprocessable Entity
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("type", response.text.lower())
+
+    async def test_create_schedule_speaker_not_found_rejected(self):
+        """Create a schedule with a non-existent speaker ID should return 400."""
+        # Given
+        start_time = datetime.now() + timedelta(hours=1)
+        end_time = start_time + timedelta(hours=1)
+
+        token, _ = await generate_token_from_user(db=self.db, user=self.user_management)
+        app.dependency_overrides[get_db_sync] = get_db_sync_for_test(db=self.db)
+        client = TestClient(app)
+
+        fake_speaker_id = str(uuid.uuid4())
+
+        # When - speaker_id that doesn't exist
+        response = client.post(
+            "/schedule/",
+            json={
+                "title": "Speaker Not Found Test",
+                "room_id": str(self.room.id),
+                "schedule_type_id": str(self.schedule_type.id),
+                "speakers": [
+                    {"speaker_id": fake_speaker_id, "order": 1, "type": "Main Speaker"},
+                ],
+                "description": "Test speaker not found",
+                "presentation_language": "English",
+                "slide_language": "English",
+                "tags": ["test"],
+                "start": start_time.isoformat(),
+                "end": end_time.isoformat(),
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        # Expect - 400 Bad Request
+        self.assertEqual(response.status_code, 400)
+        data = response.json()
+        self.assertIn("not found", data["message"])
+
+    async def test_create_schedule_order_zero_rejected(self):
+        """Create a schedule with order=0 should return 422."""
+        # Given
+        start_time = datetime.now() + timedelta(hours=1)
+        end_time = start_time + timedelta(hours=1)
+
+        token, _ = await generate_token_from_user(db=self.db, user=self.user_management)
+        app.dependency_overrides[get_db_sync] = get_db_sync_for_test(db=self.db)
+        client = TestClient(app)
+
+        # When - order = 0
+        response = client.post(
+            "/schedule/",
+            json={
+                "title": "Order Zero Test",
+                "room_id": str(self.room.id),
+                "schedule_type_id": str(self.schedule_type.id),
+                "speakers": [
+                    {
+                        "speaker_id": str(self.speaker.id),
+                        "order": 0,
+                        "type": "Main Speaker",
+                    },
+                ],
+                "description": "Test order zero",
+                "presentation_language": "English",
+                "slide_language": "English",
+                "tags": ["test"],
+                "start": start_time.isoformat(),
+                "end": end_time.isoformat(),
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        # Expect - 422 Unprocessable Entity
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("greater_than_equal", response.text)
+
+    async def test_update_schedule_duplicate_order_rejected(self):
+        """Update a schedule with duplicate speaker orders should return 422."""
+        # Given
+        start_time = datetime.now() + timedelta(hours=1)
+        end_time = start_time + timedelta(hours=1)
+
+        schedule = Schedule(
+            title="Update Duplicate Order",
+            room_id=self.room.id,
+            schedule_type_id=self.schedule_type.id,
+            start=start_time,
+            end=end_time,
+        )
+        self.db.add(schedule)
+        self.db.commit()
+
+        token, _ = await generate_token_from_user(db=self.db, user=self.user_management)
+        app.dependency_overrides[get_db_sync] = get_db_sync_for_test(db=self.db)
+        client = TestClient(app)
+
+        # When - update with duplicate order
+        response = client.put(
+            f"/schedule/{schedule.id}",
+            json={
+                "title": "Update Duplicate Order",
+                "room_id": str(self.room.id),
+                "schedule_type_id": str(self.schedule_type.id),
+                "speakers": [
+                    {
+                        "speaker_id": str(self.speaker.id),
+                        "order": 1,
+                        "type": "Main Speaker",
+                    },
+                    {
+                        "speaker_id": str(self.speaker_2.id),
+                        "order": 1,
+                        "type": "Co Speaker",
+                    },
+                ],
+                "start": start_time.isoformat(),
+                "end": end_time.isoformat(),
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        # Expect - 422
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("duplicate order", response.text.lower())
 
     def tearDown(self) -> None:
         self.db.close()

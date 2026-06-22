@@ -4,14 +4,31 @@ from typing import List, Optional, Tuple, Union
 from uuid import UUID
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy.sql import exists
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.sql.operators import or_
 
+from core.log import logger
 from models.Schedule import Schedule
 from models.Speaker import Speaker
+from models.SpeakerSchedule import SpeakerSchedule
 from schemas.schedule import ScheduleResponseItem
-from core.log import logger
+from schemas.schedule import ScheduleSpeakerInput
+
+
+def _speaker_load_options():
+    """Eager-load options for the many-to-many speaker collection on a schedule.
+
+    Uses ``selectinload`` (not ``joinedload``) for collections to avoid
+    the cartesian product when a schedule has multiple speakers.
+    """
+    return (
+        selectinload(Schedule.speakers)
+        .joinedload(SpeakerSchedule.speaker)
+        .joinedload(Speaker.user),
+        selectinload(Schedule.speakers)
+        .joinedload(SpeakerSchedule.speaker)
+        .joinedload(Speaker.speaker_type),
+    )
 
 
 def get_all_schedules(
@@ -19,14 +36,13 @@ def get_all_schedules(
     search: Optional[str] = None,
     schedule_date: Optional[Union[str, date]] = None,
 ):
-    # Hitung offset (data mulai dari baris ke-berapa)
+    # Calculate offset (how many rows to skip)
 
-    # Query dasar
+    # Base query
     stmt = (
         select(Schedule)
         .options(
-            joinedload(Schedule.speaker).joinedload(Speaker.user),
-            joinedload(Schedule.speaker).joinedload(Speaker.speaker_type),
+            *_speaker_load_options(),
             joinedload(Schedule.room),
             joinedload(Schedule.schedule_type),
         )
@@ -35,7 +51,7 @@ def get_all_schedules(
         )
     )
 
-    # Jika ada keyword pencarian
+    # If there is a search keyword
     if search:
         stmt = stmt.where(Schedule.title.ilike(f"%{search}%"))
 
@@ -47,21 +63,21 @@ def get_all_schedules(
             )
         )
 
-    # Hitung total data sebelum pagination
+    # Count total data before pagination
     total_count = db.scalar(select(func.count()).select_from(stmt.subquery()))
     results_schema = []
     try:
-        # Tambahkan pagination (offset + limit)
+        # # Add pagination (offset and limit)
         stmt = stmt.order_by(Schedule.start.asc())
 
-        # Eksekusi query dan ambil hasilnya
+        # Execute the query and collect results
         results = db.scalars(stmt).all()
         results_schema = [ScheduleResponseItem.model_validate(r) for r in results]
     except Exception as e:
         logger.error(f"Error in model validation: {e}")
-    # Hitung total halaman
+    # Calculate total pages
 
-    # Return hasil dalam bentuk dict (siap untuk API response)
+    # Return results as a dict (ready for API response)
     return {
         "page": 1,
         "page_size": 1,
@@ -78,15 +94,14 @@ def get_schedule_per_page_by_search(
     search: Optional[str] = None,
     schedule_date: Optional[Union[str, date]] = None,
 ):
-    # Hitung offset (data mulai dari baris ke-berapa)
+    # Calculate offset (how many rows to skip)
     offset = (page - 1) * page_size
 
-    # Query dasar
+    # Base query
     stmt = (
         select(Schedule)
         .options(
-            joinedload(Schedule.speaker).joinedload(Speaker.user),
-            joinedload(Schedule.speaker).joinedload(Speaker.speaker_type),
+            *_speaker_load_options(),
             joinedload(Schedule.room),
             joinedload(Schedule.schedule_type),
         )
@@ -95,7 +110,7 @@ def get_schedule_per_page_by_search(
         )
     )
 
-    # Jika ada keyword pencarian
+    # If there is a search keyword
     if search:
         stmt = stmt.where(Schedule.title.ilike(f"%{search}%"))
 
@@ -107,22 +122,22 @@ def get_schedule_per_page_by_search(
             )
         )
 
-    # Hitung total data sebelum pagination
+    # Count total data before pagination
     total_count = db.scalar(select(func.count()).select_from(stmt.subquery()))
     results_schema = []
     try:
-        # Tambahkan pagination (offset + limit)
+        # # Add pagination (offset and limit)
         stmt = stmt.offset(offset).limit(page_size).order_by(Schedule.start.asc())
 
-        # Eksekusi query dan ambil hasilnya
+        # Execute the query and collect results
         results = db.scalars(stmt).all()
         results_schema = [ScheduleResponseItem.model_validate(r) for r in results]
     except Exception as e:
         logger.error(f"Error in model validation: {e}")
-    # Hitung total halaman
+    # Calculate total pages
     page_count = (total_count + page_size - 1) // page_size if total_count else 0
 
-    # Return hasil dalam bentuk dict (siap untuk API response)
+    # Return results as a dict (ready for API response)
     return {
         "page": page,
         "page_size": page_size,
@@ -145,8 +160,7 @@ def get_schedule_cms(
     stmt = (
         select(Schedule)
         .options(
-            joinedload(Schedule.speaker).joinedload(Speaker.user),
-            joinedload(Schedule.speaker).joinedload(Speaker.speaker_type),
+            *_speaker_load_options(),
             joinedload(Schedule.room),
             joinedload(Schedule.schedule_type),
             joinedload(Schedule.stream),
@@ -187,6 +201,34 @@ def get_schedule_cms(
     return results, num_data, num_page
 
 
+def _sync_speakers(
+    db: Session,
+    schedule: Schedule,
+    speakers: Optional[List[ScheduleSpeakerInput]],
+) -> None:
+    """Synchronise the junction rows of ``speaker_schedule`` for a schedule.
+
+    Replace-all implementation: delete all existing junction rows, then insert
+    from payload. Simple and handles addition/removal/reorder without
+    error-prone diff logic.
+    """
+    if schedule.speakers:
+        for existing in list(schedule.speakers):
+            db.delete(existing)
+
+    if not speakers:
+        return
+
+    for item in speakers:
+        junction = SpeakerSchedule(
+            speaker_id=item.speaker_id,
+            schedule_id=schedule.id,
+            type=item.type,
+            order=item.order,
+        )
+        db.add(junction)
+
+
 def create_schedule(
     db: Session,
     title: str,
@@ -194,7 +236,7 @@ def create_schedule(
     schedule_type_id: Union[UUID, str],
     start: datetime,
     end: datetime,
-    speaker_id: Optional[Union[UUID, str]] = None,
+    speakers: Optional[List[ScheduleSpeakerInput]] = None,
     description: Optional[str] = None,
     presentation_language: Optional[str] = None,
     slide_language: Optional[str] = None,
@@ -204,7 +246,6 @@ def create_schedule(
 ) -> Schedule:
     schedule = Schedule(
         title=title,
-        speaker_id=speaker_id,
         room_id=room_id,
         schedule_type_id=schedule_type_id,
         description=description,
@@ -217,6 +258,10 @@ def create_schedule(
     )
 
     db.add(schedule)
+    db.flush()
+
+    _sync_speakers(db, schedule, speakers)
+
     if is_commit:
         db.commit()
     db.refresh(schedule)
@@ -230,8 +275,7 @@ def get_schedule_by_id(
     stmt = (
         select(Schedule)
         .options(
-            joinedload(Schedule.speaker).joinedload(Speaker.user),
-            joinedload(Schedule.speaker).joinedload(Speaker.speaker_type),
+            *_speaker_load_options(),
             joinedload(Schedule.room),
             joinedload(Schedule.schedule_type),
             joinedload(Schedule.stream),
@@ -245,39 +289,31 @@ def get_schedule_by_id(
     return db.execute(stmt).scalar_one_or_none()
 
 
-def get_schedule_by_speaker_id(
+def get_schedules_by_speaker_id(
     db: Session, speaker_id: Union[UUID, str], include_deleted: bool = False
-) -> Optional[Schedule]:
+) -> List[Schedule]:
+    """Get all schedules belonging to a speaker.
+
+    After the relationship became many-to-many, one speaker can have many
+    schedules, so the return type is a list.
+    """
     stmt = (
         select(Schedule)
+        .join(SpeakerSchedule, SpeakerSchedule.schedule_id == Schedule.id)
         .options(
-            joinedload(Schedule.speaker).joinedload(Speaker.user),
-            joinedload(Schedule.speaker).joinedload(Speaker.speaker_type),
+            *_speaker_load_options(),
             joinedload(Schedule.room),
             joinedload(Schedule.schedule_type),
             joinedload(Schedule.stream),
         )
-        .where(Schedule.speaker_id == speaker_id)
+        .where(SpeakerSchedule.speaker_id == speaker_id)
     )
 
     if not include_deleted:
         stmt = stmt.where(Schedule.deleted_at.is_(None))
 
-    return db.execute(stmt).scalar_one_or_none()
-
-
-def is_speaker_already_scheduled(
-    db: Session,
-    speaker_id: Union[UUID, str],
-) -> bool:
-    query = select(
-        exists().where(
-            Schedule.speaker_id == speaker_id,
-            Schedule.deleted_at.is_(None),
-        )
-    )
-    result = db.execute(query).scalar()
-    return bool(result)
+    stmt = stmt.order_by(Schedule.start.asc())
+    return list(db.execute(stmt).scalars().all())
 
 
 def update_schedule(
@@ -288,7 +324,7 @@ def update_schedule(
     end: datetime,
     room_id: Union[UUID, str],
     schedule_type_id: Union[UUID, str],
-    speaker_id: Optional[Union[UUID, str]] = None,
+    speakers: Optional[List[ScheduleSpeakerInput]] = None,
     description: Optional[str] = None,
     presentation_language: Optional[str] = None,
     slide_language: Optional[str] = None,
@@ -297,7 +333,6 @@ def update_schedule(
     is_commit: bool = True,
 ) -> Schedule:
     schedule.title = title
-    schedule.speaker_id = speaker_id
     schedule.room_id = room_id
     schedule.schedule_type_id = schedule_type_id
     schedule.description = description
@@ -308,6 +343,11 @@ def update_schedule(
     schedule.start = start
     schedule.end = end
     schedule.updated_at = datetime.now()
+
+    db.flush()
+
+    if speakers is not None:
+        _sync_speakers(db, schedule, speakers)
 
     if is_commit:
         db.commit()
