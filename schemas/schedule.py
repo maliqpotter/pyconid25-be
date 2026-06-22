@@ -39,7 +39,6 @@ class ScheduleSpeakerInput(BaseModel):
     speaker_id: UUID
     order: int = Field(ge=1, description="Display order, minimum 1")
     type: str = Field(
-        min_length=1,
         description="Speaker role, e.g. 'Main Speaker' / 'Co Speaker'",
     )
 
@@ -48,6 +47,14 @@ class ScheduleSpeakerInput(BaseModel):
     def validate_order(cls, v: int) -> int:
         if v < 1:
             raise ValueError("order must be >= 1")
+        return v
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v: str) -> str:
+        allowed = {"Main Speaker", "Co Speaker"}
+        if v not in allowed:
+            raise ValueError(f"type must be one of {sorted(allowed)}")
         return v
 
 
