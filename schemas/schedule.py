@@ -202,7 +202,7 @@ class ScheduleSpeakerItem(BaseModel):
 class PublicScheduleDetail(BaseModel):
     id: UUID
     title: str
-    speakers: List[ScheduleSpeakerItem] = []
+    speakers: List[ScheduleSpeakerItem] = Field(default_factory=list)
     room: RoomInfo
     schedule_type: ScheduleTypeInfo
     description: Optional[str] = None
@@ -238,7 +238,7 @@ class SimplePublicSpeakerInfo(BaseModel):
 class ScheduleDetail(BaseModel):
     id: UUID
     title: str
-    speakers: List[ScheduleSpeakerItem] = []
+    speakers: List[ScheduleSpeakerItem] = Field(default_factory=list)
     room: RoomInfo
     schedule_type: ScheduleTypeInfo
     description: Optional[str] = None
@@ -258,7 +258,7 @@ class ScheduleDetail(BaseModel):
 class ScheduleResponseItem(BaseModel):
     id: UUID
     title: str
-    speakers: List[ScheduleSpeakerItem] = []
+    speakers: List[ScheduleSpeakerItem] = Field(default_factory=list)
     room: RoomInfo
     schedule_type: ScheduleTypeInfo
     presentation_language: Optional[Language] = None
@@ -290,7 +290,7 @@ class MuxStreamDetail(BaseModel):
 class ScheduleCMSResponseItem(BaseModel):
     id: str
     title: str
-    speakers: List[ScheduleSpeakerItem] = []
+    speakers: List[ScheduleSpeakerItem] = Field(default_factory=list)
     room: RoomInfo
     schedule_type: ScheduleTypeInfo
     stream_key: Optional[str] = None
