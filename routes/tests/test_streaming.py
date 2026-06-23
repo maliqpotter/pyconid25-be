@@ -13,6 +13,7 @@ from models.Room import Room
 from models.Schedule import Schedule
 from models.ScheduleType import ScheduleType
 from models.Speaker import Speaker
+from models.SpeakerSchedule import SpeakerSchedule
 from models.SpeakerType import SpeakerType
 from models.Stream import Stream, StreamStatus
 from models.StreamWatchSession import StreamWatchSession, WatchMode
@@ -95,7 +96,6 @@ class TestStreaming(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="Test Schedule",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description",
@@ -106,6 +106,15 @@ class TestStreaming(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule)
+        self.db.flush()
+        self.db.add(
+            SpeakerSchedule(
+                speaker_id=self.speaker.id,
+                schedule_id=schedule.id,
+                type="Main Speaker",
+                order=1,
+            )
+        )
         self.db.commit()
 
         stream = Stream(
@@ -161,7 +170,6 @@ class TestStreaming(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="Test Schedule",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description",
@@ -172,6 +180,15 @@ class TestStreaming(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule)
+        self.db.flush()
+        self.db.add(
+            SpeakerSchedule(
+                speaker_id=self.speaker.id,
+                schedule_id=schedule.id,
+                type="Main Speaker",
+                order=1,
+            )
+        )
         self.db.commit()
 
         stream = Stream(
@@ -222,7 +239,6 @@ class TestStreaming(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="Ended Schedule",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description",
@@ -233,6 +249,15 @@ class TestStreaming(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule)
+        self.db.flush()
+        self.db.add(
+            SpeakerSchedule(
+                speaker_id=self.speaker.id,
+                schedule_id=schedule.id,
+                type="Main Speaker",
+                order=1,
+            )
+        )
         self.db.commit()
 
         stream = Stream(
@@ -291,7 +316,6 @@ class TestStreaming(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="Private Stream Schedule",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description",
@@ -302,6 +326,15 @@ class TestStreaming(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule)
+        self.db.flush()
+        self.db.add(
+            SpeakerSchedule(
+                speaker_id=self.speaker.id,
+                schedule_id=schedule.id,
+                type="Main Speaker",
+                order=1,
+            )
+        )
         self.db.commit()
 
         stream = Stream(
@@ -345,7 +378,6 @@ class TestStreaming(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="Test Schedule",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description",
@@ -356,6 +388,15 @@ class TestStreaming(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule)
+        self.db.flush()
+        self.db.add(
+            SpeakerSchedule(
+                speaker_id=self.speaker.id,
+                schedule_id=schedule.id,
+                type="Main Speaker",
+                order=1,
+            )
+        )
         self.db.commit()
 
         stream = Stream(
@@ -387,7 +428,6 @@ class TestStreaming(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="Test Schedule",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description",
@@ -398,6 +438,15 @@ class TestStreaming(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule)
+        self.db.flush()
+        self.db.add(
+            SpeakerSchedule(
+                speaker_id=self.speaker.id,
+                schedule_id=schedule.id,
+                type="Main Speaker",
+                order=1,
+            )
+        )
         self.db.commit()
 
         stream = Stream(
@@ -504,7 +553,6 @@ class TestStreaming(IsolatedAsyncioTestCase):
 
         schedule = Schedule(
             title="Deleted Schedule",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description",
@@ -516,6 +564,15 @@ class TestStreaming(IsolatedAsyncioTestCase):
             deleted_at=datetime.now(),
         )
         self.db.add(schedule)
+        self.db.flush()
+        self.db.add(
+            SpeakerSchedule(
+                speaker_id=self.speaker.id,
+                schedule_id=schedule.id,
+                type="Main Speaker",
+                order=1,
+            )
+        )
         self.db.commit()
 
         stream = Stream(
@@ -559,7 +616,6 @@ class TestStreaming(IsolatedAsyncioTestCase):
 
         schedule_one = Schedule(
             title="First Stream Schedule",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description",
@@ -571,7 +627,6 @@ class TestStreaming(IsolatedAsyncioTestCase):
         )
         schedule_two = Schedule(
             title="Second Stream Schedule",
-            speaker_id=self.speaker.id,
             room_id=self.room.id,
             schedule_type_id=self.schedule_type.id,
             description="Test description",
@@ -582,7 +637,25 @@ class TestStreaming(IsolatedAsyncioTestCase):
             end=end_time,
         )
         self.db.add(schedule_one)
+        self.db.flush()
+        self.db.add(
+            SpeakerSchedule(
+                speaker_id=self.speaker.id,
+                schedule_id=schedule_one.id,
+                type="Main Speaker",
+                order=1,
+            )
+        )
         self.db.add(schedule_two)
+        self.db.flush()
+        self.db.add(
+            SpeakerSchedule(
+                speaker_id=self.speaker.id,
+                schedule_id=schedule_two.id,
+                type="Main Speaker",
+                order=1,
+            )
+        )
         self.db.commit()
 
         stream_one = Stream(

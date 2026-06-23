@@ -1,5 +1,13 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from models.SpeakerSchedule import SpeakerSchedule
+
 import datetime
 import uuid
+from typing import List
+
 from models import Base
 from sqlalchemy import UUID, DateTime, ForeignKey
 from sqlalchemy.orm import mapped_column, Mapped, relationship
@@ -35,3 +43,8 @@ class Speaker(Base):
     # Relationships
     user = relationship("User", backref="speaker_user")
     speaker_type = relationship("SpeakerType", backref="speaker_speaker_type")
+    schedule_speakers: Mapped[List["SpeakerSchedule"]] = relationship(
+        "SpeakerSchedule",
+        back_populates="speaker",
+        cascade="all, delete-orphan",
+    )

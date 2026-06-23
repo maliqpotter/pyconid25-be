@@ -66,6 +66,7 @@ from models.Room import Room  # NOQA
 from models.ScheduleType import ScheduleType  # NOQA
 from models.Schedule import Schedule  # NOQA
 from models.Speaker import Speaker  # NOQA
+from models.SpeakerSchedule import SpeakerSchedule  # NOQA
 from models.Voucher import Voucher  # NOQA
 from models.Stream import Stream  # NOQA
 from models.StreamWatchSession import StreamWatchSession  # NOQA

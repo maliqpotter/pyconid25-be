@@ -1,3 +1,9 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from models.SpeakerSchedule import SpeakerSchedule
+
 import datetime
 import uuid
 from typing import List
@@ -14,13 +20,6 @@ class Schedule(Base):
 
     id: Mapped[str] = mapped_column(
         "id", UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4
-    )
-    speaker_id: Mapped[str] = mapped_column(
-        "speaker_id",
-        UUID(as_uuid=True),
-        ForeignKey("speaker.id"),
-        index=True,
-        nullable=True,
     )
     room_id: Mapped[str] = mapped_column(
         "room_id", UUID(as_uuid=True), ForeignKey("room.id"), index=True, nullable=True
@@ -59,7 +58,12 @@ class Schedule(Base):
     deleted_at = mapped_column("deleted_at", DateTime(timezone=True))
 
     # Relationships
-    speaker = relationship("Speaker", backref="schedules")
+    speakers: Mapped[List["SpeakerSchedule"]] = relationship(
+        "SpeakerSchedule",
+        back_populates="schedule",
+        cascade="all, delete-orphan",
+        order_by="SpeakerSchedule.order",
+    )
     room = relationship("Room", back_populates="schedules")
     schedule_type = relationship("ScheduleType", back_populates="schedules")
     stream = relationship(
