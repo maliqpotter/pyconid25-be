@@ -30,6 +30,8 @@ def get_all_user(
     search: Optional[str] = None,
     paritcipant_type: Optional[str] = None,
     is_organizer: Optional[bool] = None,
+    all: bool = True,
+    limit: int = 10,
 ) -> list[User]:
     stmt = select(User)
     if search:
@@ -52,6 +54,10 @@ def get_all_user(
         stmt = stmt.distinct()
 
     stmt = stmt.order_by(User.email.asc())
+
+    if all is False:
+        stmt = stmt.limit(limit=limit)
+
     results = db.execute(stmt).scalars().all()
     return results
 

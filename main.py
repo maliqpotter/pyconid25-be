@@ -90,6 +90,7 @@ from routes.ticket import router as ticket_router  # noqa: E402
 from routes.user_profile import router as user_profile_router  # noqa: E402
 from routes.volunteer import router as volunteer_router  # noqa: E402
 from routes.voucher import router as voucher_router  # noqa: E402
+from routes.user import router as user_router  # noqa: E402
 
 app.include_router(auth_router)
 app.include_router(user_profile_router)
@@ -107,6 +108,7 @@ app.include_router(organizer_type_router)
 app.include_router(organizer_router)
 app.include_router(schedule_type_router)
 app.include_router(volunteer_router)
+app.include_router(user_router)
 
 
 @app.exception_handler(ValidationError)
