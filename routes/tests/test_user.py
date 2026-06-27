@@ -7,7 +7,7 @@ from core.security import generate_token_from_user
 from main import app
 from models import db, engine, get_db_sync, get_db_sync_for_test
 from models.User import MANAGEMENT_PARTICIPANT, User
-from schemas.user import UserListResponse
+from schemas.user import UserListResponse, UserQrDetail
 
 
 class TestUser(IsolatedAsyncioTestCase):
@@ -89,7 +89,7 @@ class TestUser(IsolatedAsyncioTestCase):
             response.json(),
             UserListResponse(
                 results=[
-                    UserListResponse.UserQrDetail(
+                    UserQrDetail(
                         id=str(user.id),
                         username=user.username,
                         first_name=user.first_name,
@@ -114,7 +114,7 @@ class TestUser(IsolatedAsyncioTestCase):
             response.json(),
             UserListResponse(
                 results=[
-                    UserListResponse.UserQrDetail(
+                    UserQrDetail(
                         id=str(users[11].id),
                         username=users[11].username,
                         first_name=users[11].first_name,
@@ -122,6 +122,89 @@ class TestUser(IsolatedAsyncioTestCase):
                         email=users[11].email,
                     )
                 ]
+            ).model_dump(),
+        )
+
+    async def test_get_detail_user_for_qr(self):
+        # Given
+        management_user = User(
+            id="123e4567-e89b-12d3-a456-426614174000",
+            username="admin",
+            participant_type=MANAGEMENT_PARTICIPANT,
+            email="admin@local.com",
+        )
+        non_management_user = User(
+            id="223e4567-e89b-12d3-a456-426614174000",
+            username="member-non-management",
+            participant_type="Speaker",
+            email="member@local.com",
+        )
+        target_user = User(
+            id="323e4567-e89b-12d3-a456-426614174000",
+            username="target-member",
+            first_name="Target",
+            last_name="Member",
+            email="target@local.com",
+        )
+
+        self.db.add(management_user)
+        self.db.add(non_management_user)
+        self.db.add(target_user)
+        self.db.commit()
+
+        (management_token, _) = await generate_token_from_user(
+            db=self.db, user=management_user
+        )
+        (non_management_token, _) = await generate_token_from_user(
+            db=self.db, user=non_management_user
+        )
+
+        app.dependency_overrides[get_db_sync] = get_db_sync_for_test(db=self.db)
+        client = TestClient(app)
+
+        # When 1 - request without token
+        response = client.get(f"/user/{target_user.id}/qr/")
+
+        # Expect 1
+        self.assertEqual(response.status_code, 401)
+        self.assertDictEqual(response.json(), {"message": "Unauthorized"})
+
+        # When 2 - non management user
+        response = client.get(
+            f"/user/{target_user.id}/qr/",
+            headers={"Authorization": f"Bearer {non_management_token}"},
+        )
+
+        # Expect 2
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json(), "Forbidden: Insufficient permissions")
+
+        # When 3 - management user with invalid user id
+        response = client.get(
+            "/user/423e4567-e89b-12d3-a456-426614174000/qr/",
+            headers={"Authorization": f"Bearer {management_token}"},
+        )
+
+        # Expect 3
+        self.assertEqual(response.status_code, 404)
+        self.assertDictEqual(response.json(), {"message": "User not found"})
+
+        # When 4 - management user with valid user id
+        response = client.get(
+            f"/user/{target_user.id}/qr/",
+            headers={"Authorization": f"Bearer {management_token}"},
+        )
+
+        # Expect 4
+        self.assertEqual(response.status_code, 200)
+        self.assertDictEqual(
+            response.json(),
+            UserQrDetail(
+                id=str(target_user.id),
+                username=target_user.username,
+                first_name=target_user.first_name,
+                last_name=target_user.last_name,
+                email=target_user.email,
             ).model_dump(),
         )
 

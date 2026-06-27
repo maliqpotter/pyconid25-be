@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from core.responses import (
     Forbidden,
-    InternalServerError,
+    NotFound,
     Ok,
     Unauthorized,
     common_response,
@@ -13,8 +13,12 @@ from models import get_db_sync
 from models.User import MANAGEMENT_PARTICIPANT, User
 from repository import user as userRepo
 from schemas.auth import AuthorizationStatusEnum
-from schemas.common import InternalServerErrorResponse
-from schemas.user import UserListResponse
+from schemas.common import (
+    ForbiddenResponse,
+    InternalServerErrorResponse,
+    NotFoundResponse,
+)
+from schemas.user import UserListResponse, UserQrDetail
 
 
 router = APIRouter(prefix="/user", tags=["User"])
@@ -24,6 +28,7 @@ router = APIRouter(prefix="/user", tags=["User"])
     "/qr/",
     responses={
         "200": {"model": UserListResponse},
+        "403": {"model": ForbiddenResponse},
         "500": {"model": InternalServerErrorResponse},
     },
 )
@@ -34,31 +39,67 @@ async def get_user_for_qr(
         None, description="Search users by name, username, or email"
     ),
 ):
-    try:
-        auth_status = check_permissions(current_user, MANAGEMENT_PARTICIPANT)
-        if auth_status == AuthorizationStatusEnum.UNAUTHORIZED:
-            return common_response(Unauthorized(message="Unauthorized"))
-        if auth_status == AuthorizationStatusEnum.FORBIDDEN:
-            return common_response(
-                Forbidden(custom_response="Forbidden: Insufficient permissions")
-            )
-
-        all_user = userRepo.get_all_user(db=db, search=search, all=False)
+    auth_status = check_permissions(current_user, MANAGEMENT_PARTICIPANT)
+    if auth_status == AuthorizationStatusEnum.UNAUTHORIZED:
+        return common_response(Unauthorized(message="Unauthorized"))
+    if auth_status == AuthorizationStatusEnum.FORBIDDEN:
         return common_response(
-            Ok(
-                data=UserListResponse(
-                    results=[
-                        UserListResponse.UserQrDetail(
-                            id=str(user.id),
-                            username=user.username,
-                            first_name=user.first_name,
-                            last_name=user.last_name,
-                            email=user.email,
-                        )
-                        for user in all_user
-                    ]
-                ).model_dump()
-            )
+            Forbidden(custom_response="Forbidden: Insufficient permissions")
         )
-    except Exception as e:
-        return common_response(InternalServerError(error=str(e)))
+
+    all_user = userRepo.get_all_user(db=db, search=search, all=False)
+    return common_response(
+        Ok(
+            data=UserListResponse(
+                results=[
+                    UserQrDetail(
+                        id=str(user.id),
+                        username=user.username,
+                        first_name=user.first_name,
+                        last_name=user.last_name,
+                        email=user.email,
+                    )
+                    for user in all_user
+                ]
+            ).model_dump()
+        )
+    )
+
+
+@router.get(
+    "/{user_id}/qr/",
+    responses={
+        "200": {"model": UserQrDetail},
+        "403": {"model": ForbiddenResponse},
+        "404": {"model": NotFoundResponse},
+        "500": {"model": InternalServerErrorResponse},
+    },
+)
+async def get_detail_user_for_qr(
+    user_id: str,
+    db: Session = Depends(get_db_sync),
+    current_user: User = Depends(get_current_user),
+):
+    auth_status = check_permissions(current_user, MANAGEMENT_PARTICIPANT)
+    if auth_status == AuthorizationStatusEnum.UNAUTHORIZED:
+        return common_response(Unauthorized(message="Unauthorized"))
+    if auth_status == AuthorizationStatusEnum.FORBIDDEN:
+        return common_response(
+            Forbidden(custom_response="Forbidden: Insufficient permissions")
+        )
+
+    user = userRepo.get_user_by_id(db=db, id=user_id)
+    if not user:
+        return common_response(NotFound(message="User not found"))
+
+    return common_response(
+        Ok(
+            data=UserQrDetail(
+                id=str(user.id),
+                username=user.username,
+                first_name=user.first_name,
+                last_name=user.last_name,
+                email=user.email,
+            ).model_dump()
+        )
+    )
