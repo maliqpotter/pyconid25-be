@@ -88,6 +88,10 @@ class TestUser(IsolatedAsyncioTestCase):
         self.assertDictEqual(
             response.json(),
             UserListResponse(
+                count=14,
+                page_size=10,
+                page=1,
+                page_count=2,
                 results=[
                     UserQrDetail(
                         id=str(user.id),
@@ -97,7 +101,7 @@ class TestUser(IsolatedAsyncioTestCase):
                         email=user.email,
                     )
                     for user in expected_users
-                ]
+                ],
             ).model_dump(),
         )
 
@@ -113,6 +117,10 @@ class TestUser(IsolatedAsyncioTestCase):
         self.assertDictEqual(
             response.json(),
             UserListResponse(
+                count=1,
+                page_size=10,
+                page=1,
+                page_count=1,
                 results=[
                     UserQrDetail(
                         id=str(users[11].id),
@@ -121,7 +129,7 @@ class TestUser(IsolatedAsyncioTestCase):
                         last_name=users[11].last_name,
                         email=users[11].email,
                     )
-                ]
+                ],
             ).model_dump(),
         )
 

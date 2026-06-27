@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from core.responses import (
@@ -18,7 +18,7 @@ from schemas.common import (
     InternalServerErrorResponse,
     NotFoundResponse,
 )
-from schemas.user import UserListResponse, UserQrDetail
+from schemas.user import UserListResponse, UserQrDetail, UserQrQuery
 
 
 router = APIRouter(prefix="/user", tags=["User"])
@@ -33,11 +33,9 @@ router = APIRouter(prefix="/user", tags=["User"])
     },
 )
 async def get_user_for_qr(
+    query: UserQrQuery = Depends(),
     db: Session = Depends(get_db_sync),
     current_user: User = Depends(get_current_user),
-    search: str | None = Query(
-        None, description="Search users by name, username, or email"
-    ),
 ):
     auth_status = check_permissions(current_user, MANAGEMENT_PARTICIPANT)
     if auth_status == AuthorizationStatusEnum.UNAUTHORIZED:
@@ -47,10 +45,23 @@ async def get_user_for_qr(
             Forbidden(custom_response="Forbidden: Insufficient permissions")
         )
 
-    all_user = userRepo.get_all_user(db=db, search=search, all=False)
+    is_all = bool(query.all)
+
+    all_user, num_data, num_page = userRepo.get_all_user(
+        db=db,
+        with_pagination_meta=True,
+        page=query.page,
+        page_size=query.page_size,
+        search=query.search,
+        all=is_all,
+    )
     return common_response(
         Ok(
             data=UserListResponse(
+                count=num_data,
+                page_size=(query.page_size if not is_all and query.page_size else 0),
+                page=(query.page if not is_all and query.page else 1),
+                page_count=(num_page if not is_all and num_page is not None else 1),
                 results=[
                     UserQrDetail(
                         id=str(user.id),
@@ -60,7 +71,7 @@ async def get_user_for_qr(
                         email=user.email,
                     )
                     for user in all_user
-                ]
+                ],
             ).model_dump()
         )
     )
