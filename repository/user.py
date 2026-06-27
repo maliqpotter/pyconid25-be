@@ -2,9 +2,10 @@ from sqlalchemy import UUID
 from sqlalchemy.inspection import inspect
 import datetime
 from enum import Enum
+from math import ceil
 from pydantic import HttpUrl
 from typing import Optional
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from models.Organizer import Organizer
@@ -32,7 +33,10 @@ def get_all_user(
     is_organizer: Optional[bool] = None,
     all: bool = True,
     limit: int = 10,
-) -> list[User]:
+    page: Optional[int] = None,
+    page_size: Optional[int] = None,
+    with_pagination_meta: bool = False,
+) -> list[User] | tuple[list[User], int, Optional[int]]:
     stmt = select(User)
     if search:
         search_pattern = f"%{search}%"
@@ -55,10 +59,31 @@ def get_all_user(
 
     stmt = stmt.order_by(User.email.asc())
 
+    num_data = None
+    num_page = None
+    effective_page_size = page_size
+
+    if with_pagination_meta:
+        num_data = (
+            db.execute(select(func.count()).select_from(stmt.subquery())).scalar() or 0
+        )
+
     if all is False:
-        stmt = stmt.limit(limit=limit)
+        if page is not None and page_size is not None:
+            effective_page_size = page_size
+            stmt = stmt.limit(page_size).offset((page - 1) * page_size)
+        else:
+            effective_page_size = limit
+            stmt = stmt.limit(limit=limit)
+
+        if with_pagination_meta and effective_page_size:
+            num_page = ceil(num_data / effective_page_size) if num_data > 0 else 1
 
     results = db.execute(stmt).scalars().all()
+
+    if with_pagination_meta:
+        return results, num_data, num_page
+
     return results
 
 
