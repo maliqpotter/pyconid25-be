@@ -3,11 +3,12 @@ from unittest import IsolatedAsyncioTestCase
 
 from fastapi.testclient import TestClient
 
-from core.security import generate_token_from_user
+from core.security import generate_hash_password, generate_token_from_user
 from main import app
 from models import db, engine, get_db_sync, get_db_sync_for_test
 from models.User import MANAGEMENT_PARTICIPANT, User
 from schemas.user import UserListResponse, UserQrDetail
+from uuid import uuid4
 
 
 class TestUser(IsolatedAsyncioTestCase):
@@ -17,6 +18,83 @@ class TestUser(IsolatedAsyncioTestCase):
         self.connection = engine.connect()
         self.trans = self.connection.begin()
         self.db = db(bind=self.connection, join_transaction_mode="create_savepoint")
+
+    async def test_get_user_by_id(self):
+        # Given
+        searched_user = User(
+            id=str(uuid4()),
+            username="searcheduser",
+            email="searcheduser@local.com",
+            password=generate_hash_password("password"),
+            # participant_type=MANAGEMENT_PARTICIPANT,
+            is_active=True,
+        )
+        self.db.add(searched_user)
+        new_user = User(
+            username="testuser",
+            email="testuser@local.com",
+            password=generate_hash_password("password"),
+            # participant_type=MANAGEMENT_PARTICIPANT,
+            is_active=True,
+        )
+        self.db.add(new_user)
+        self.db.commit()
+        app.dependency_overrides[get_db_sync] = get_db_sync_for_test(db=self.db)
+        client = TestClient(app)
+        response = client.post(
+            "/auth/email/signin/",
+            json={"email": "testuser@local.com", "password": "password"},
+        )
+        token = response.json().get("token", None)
+
+        # When 1
+        response = client.get(f"/user/{searched_user.id}")
+        # Expect 1
+        # asser public profile checked
+        self.assertEqual(response.status_code, 401)
+
+        # When 2
+        response = client.get(
+            f"/user/{searched_user.id}", headers={"Authorization": f"Bearer {token}"}
+        )
+        # Expect 2
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("experience", response.json())
+        self.assertIn("industry_categories", response.json())
+        self.assertIn("gender", response.json())
+        self.assertIn("city", response.json())
+        self.assertIn("zip_code", response.json())
+        self.assertIn("address", response.json())
+        self.assertIn("date_of_birth", response.json())
+        self.assertIn("t_shirt_size", response.json())
+        self.assertIn("email", response.json())
+        self.assertIn("phone", response.json())
+        self.assertIn("github_username", response.json())
+        self.assertIn("linkedin_username", response.json())
+        self.assertIn("twitter_username", response.json())
+        self.assertIn("facebook_username", response.json())
+        self.assertNotIn("is_active", response.json())
+        self.assertNotIn("created_at", response.json())
+        self.assertNotIn("updated_at", response.json())
+        self.assertIn("interest", response.json())
+        self.assertIn("profile_picture", response.json())
+        self.assertIn("first_name", response.json())
+        self.assertIn("last_name", response.json())
+        self.assertIn("job_category", response.json())
+        self.assertIn("job_title", response.json())
+        self.assertIn("country", response.json())
+        self.assertIn("bio", response.json())
+        self.assertIn("participant_type", response.json())
+        self.assertIn("coc_acknowledged", response.json())
+        self.assertIn("terms_agreed", response.json())
+        self.assertIn("privacy_agreed", response.json())
+        self.assertIn("share_my_email_and_phone_number", response.json())
+        self.assertIn("share_my_job_and_company", response.json())
+        self.assertIn("share_my_location", response.json())
+        self.assertIn("share_my_interest", response.json())
+        self.assertIn("share_my_public_social_media", response.json())
+        self.assertIn("share_my_data_to_sponsor", response.json())
+        self.assertIn("retain_my_data_for_next_pycon", response.json())
 
     async def test_get_user_for_qr(self):
         # Given

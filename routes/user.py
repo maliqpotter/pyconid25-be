@@ -17,11 +17,38 @@ from schemas.common import (
     ForbiddenResponse,
     InternalServerErrorResponse,
     NotFoundResponse,
+    UnauthorizedResponse,
 )
 from schemas.user import UserListResponse, UserQrDetail, UserQrQuery
+from schemas.user_profile import UserProfilePrivate
 
 
 router = APIRouter(prefix="/user", tags=["User"])
+
+
+@router.get(
+    "/{user_id}",
+    responses={
+        "200": {"model": UserProfilePrivate},
+        "401": {"model": UnauthorizedResponse},
+        "404": {"model": NotFoundResponse},
+        "500": {"model": InternalServerErrorResponse},
+    },
+)
+async def get_user_by_id(
+    user_id: str,
+    db: Session = Depends(get_db_sync),
+    user: User = Depends(get_current_user),
+):
+    if user is None:
+        return common_response(Unauthorized(message="Unauthorized"))
+
+    selected_user = userRepo.get_user_by_id(db=db, id=user_id)
+    if selected_user is None:
+        return common_response(NotFound(message=f"User with id = {user_id} not found"))
+
+    user_schema = UserProfilePrivate.model_validate(user)
+    return user_schema
 
 
 @router.get(
