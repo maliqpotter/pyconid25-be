@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from uuid import UUID
 
 from core.responses import (
     Forbidden,
@@ -26,6 +27,15 @@ from schemas.user_profile import UserProfilePrivate
 router = APIRouter(prefix="/user", tags=["User"])
 
 
+def validate_uuid(user_id: str):
+    """Validate if user_id is a valid UUID, return NotFound response if invalid"""
+    try:
+        UUID(user_id)
+    except (ValueError, AttributeError):
+        return common_response(NotFound(message=f"User with id = {user_id} not found"))
+    return None
+
+
 @router.get(
     "/{user_id}",
     responses={
@@ -43,11 +53,16 @@ async def get_user_by_id(
     if user is None:
         return common_response(Unauthorized(message="Unauthorized"))
 
+    # Validate UUID format
+    uuid_error = validate_uuid(user_id)
+    if uuid_error:
+        return uuid_error
+
     selected_user = userRepo.get_user_by_id(db=db, id=user_id)
     if selected_user is None:
         return common_response(NotFound(message=f"User with id = {user_id} not found"))
 
-    user_schema = UserProfilePrivate.model_validate(user)
+    user_schema = UserProfilePrivate.model_validate(selected_user)
     return user_schema
 
 
@@ -125,6 +140,11 @@ async def get_detail_user_for_qr(
         return common_response(
             Forbidden(custom_response="Forbidden: Insufficient permissions")
         )
+
+    # Validate UUID format
+    uuid_error = validate_uuid(user_id)
+    if uuid_error:
+        return uuid_error
 
     user = userRepo.get_user_by_id(db=db, id=user_id)
     if not user:
