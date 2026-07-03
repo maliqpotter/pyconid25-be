@@ -62,7 +62,7 @@ async def get_user_by_id(
     if selected_user is None:
         return common_response(NotFound(message=f"User with id = {user_id} not found"))
 
-    user_schema = UserProfilePrivate.model_validate(user)
+    user_schema = UserProfilePrivate.model_validate(selected_user)
     return user_schema
 
 
