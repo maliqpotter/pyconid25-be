@@ -3,7 +3,7 @@ from math import ceil
 from typing import List, Optional, Tuple, Union
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.sql.operators import or_
 
@@ -212,9 +212,11 @@ def _sync_speakers(
     from payload. Simple and handles addition/removal/reorder without
     error-prone diff logic.
     """
-    if schedule.speakers:
-        for existing in list(schedule.speakers):
-            db.delete(existing)
+    db.execute(
+        delete(SpeakerSchedule).where(SpeakerSchedule.schedule_id == schedule.id)
+    )
+    db.flush()
+    schedule.speakers.clear()
 
     if not speakers:
         return

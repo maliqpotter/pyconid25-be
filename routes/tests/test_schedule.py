@@ -365,6 +365,152 @@ class TestSchedule(IsolatedAsyncioTestCase):
         self.assertEqual(data["title"], "Updated Title")
         self.assertEqual(data["description"], "Updated description")
 
+    async def test_update_schedule_reorder_speakers(self):
+        # Given — schedule with two speakers in order [Dima, Bima]
+        start_time = datetime.now() + timedelta(hours=1)
+        end_time = start_time + timedelta(hours=1)
+
+        schedule = Schedule(
+            title="Two Speakers",
+            room_id=self.room.id,
+            schedule_type_id=self.schedule_type.id,
+            description="Has two speakers",
+            presentation_language="English",
+            slide_language="English",
+            tags=["python"],
+            start=start_time,
+            end=end_time,
+        )
+        self.db.add(schedule)
+        self.db.flush()
+        _attach_speaker(self.db, schedule, self.speaker, order=1)
+        _attach_speaker(self.db, schedule, self.speaker_2, order=2)
+        self.db.commit()
+
+        token, _ = await generate_token_from_user(db=self.db, user=self.user_management)
+        app.dependency_overrides[get_db_sync] = get_db_sync_for_test(db=self.db)
+        client = TestClient(app)
+
+        payload = {
+            "title": "Two Speakers",
+            "room_id": str(self.room.id),
+            "speakers": [
+                {
+                    "speaker_id": str(self.speaker_2.id),
+                    "order": 1,
+                    "type": "Main Speaker",
+                },
+                {
+                    "speaker_id": str(self.speaker.id),
+                    "order": 2,
+                    "type": "Co Speaker",
+                },
+            ],
+            "schedule_type_id": str(self.schedule_type.id),
+            "description": "Reordered speakers",
+            "presentation_language": "English",
+            "slide_language": "English",
+            "tags": ["python"],
+            "start": str(start_time),
+            "end": str(end_time),
+        }
+
+        # When — reorder to [Bima, Dima]
+        response = client.put(
+            f"/schedule/{schedule.id}",
+            json=payload,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        # Expect
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data["speakers"]), 2)
+        self.assertEqual(data["speakers"][0]["speaker"]["id"], str(self.speaker_2.id))
+        self.assertEqual(data["speakers"][0]["order"], 1)
+        self.assertEqual(data["speakers"][1]["speaker"]["id"], str(self.speaker.id))
+        self.assertEqual(data["speakers"][1]["order"], 2)
+
+    async def test_update_schedule_replace_speaker(self):
+        # Given — schedule with [Dima, Bima], replace Bima with a new speaker
+        start_time = datetime.now() + timedelta(hours=1)
+        end_time = start_time + timedelta(hours=1)
+
+        user_speaker_3 = User(
+            username="speaker_user_3",
+            first_name="Budi",
+            last_name="Santoso",
+            bio="Third speaker",
+            email="budi@example.com",
+            share_my_email_and_phone_number=True,
+            share_my_job_and_company=False,
+            share_my_public_social_media=False,
+        )
+        self.db.add(user_speaker_3)
+        speaker_3 = Speaker(user=user_speaker_3, speaker_type=self.speaker_type)
+        self.db.add(speaker_3)
+
+        schedule = Schedule(
+            title="Replace Speaker",
+            room_id=self.room.id,
+            schedule_type_id=self.schedule_type.id,
+            description="Has two speakers",
+            presentation_language="English",
+            slide_language="English",
+            tags=["python"],
+            start=start_time,
+            end=end_time,
+        )
+        self.db.add(schedule)
+        self.db.flush()
+        _attach_speaker(self.db, schedule, self.speaker, order=1)
+        _attach_speaker(self.db, schedule, self.speaker_2, order=2)
+        self.db.commit()
+
+        token, _ = await generate_token_from_user(db=self.db, user=self.user_management)
+        app.dependency_overrides[get_db_sync] = get_db_sync_for_test(db=self.db)
+        client = TestClient(app)
+
+        payload = {
+            "title": "Replace Speaker",
+            "room_id": str(self.room.id),
+            "speakers": [
+                {
+                    "speaker_id": str(self.speaker.id),
+                    "order": 1,
+                    "type": "Main Speaker",
+                },
+                {
+                    "speaker_id": str(speaker_3.id),
+                    "order": 2,
+                    "type": "Co Speaker",
+                },
+            ],
+            "schedule_type_id": str(self.schedule_type.id),
+            "description": "Replaced speaker",
+            "presentation_language": "English",
+            "slide_language": "English",
+            "tags": ["python"],
+            "start": str(start_time),
+            "end": str(end_time),
+        }
+
+        # When — replace Bima with Budi
+        response = client.put(
+            f"/schedule/{schedule.id}",
+            json=payload,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        # Expect
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data["speakers"]), 2)
+        speaker_ids = [s["speaker"]["id"] for s in data["speakers"]]
+        self.assertIn(str(self.speaker.id), speaker_ids)
+        self.assertIn(str(speaker_3.id), speaker_ids)
+        self.assertNotIn(str(self.speaker_2.id), speaker_ids)
+
     async def test_update_schedule_clear_speakers(self):
         # Given
         start_time = datetime.now() + timedelta(hours=1)
