@@ -2,11 +2,13 @@ from sqlalchemy import UUID
 from sqlalchemy.inspection import inspect
 import datetime
 from enum import Enum
+from math import ceil
 from pydantic import HttpUrl
 from typing import Optional
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from models.Organizer import Organizer
 from models.User import VOLUNTEER_PARTICIPANT, User
 from models.Volunteer import Volunteer
 from schemas.user_profile import UserProfileDB
@@ -25,8 +27,16 @@ def get_user_by_email(db: Session, email: str) -> Optional[User]:
 
 
 def get_all_user(
-    db: Session, search: Optional[str] = None, paritcipant_type: Optional[str] = None
-) -> list[User]:
+    db: Session,
+    search: Optional[str] = None,
+    paritcipant_type: Optional[str] = None,
+    is_organizer: Optional[bool] = None,
+    all: bool = True,
+    limit: int = 10,
+    page: Optional[int] = None,
+    page_size: Optional[int] = None,
+    with_pagination_meta: bool = False,
+) -> list[User] | tuple[list[User], int, Optional[int]]:
     stmt = select(User)
     if search:
         search_pattern = f"%{search}%"
@@ -38,8 +48,42 @@ def get_all_user(
         )
     if paritcipant_type:
         stmt = stmt.where(User.participant_type == paritcipant_type)
+
+    if is_organizer is not None:
+        stmt = stmt.join(Organizer, User.organizer, isouter=True)
+        if is_organizer is True:
+            stmt = stmt.where(Organizer.id.is_not(None))
+        else:
+            stmt = stmt.where(Organizer.id.is_(None))
+        stmt = stmt.distinct()
+
     stmt = stmt.order_by(User.email.asc())
+
+    num_data = None
+    num_page = None
+    effective_page_size = page_size
+
+    if with_pagination_meta:
+        num_data = (
+            db.execute(select(func.count()).select_from(stmt.subquery())).scalar() or 0
+        )
+
+    if all is False:
+        if page is not None and page_size is not None:
+            effective_page_size = page_size
+            stmt = stmt.limit(page_size).offset((page - 1) * page_size)
+        else:
+            effective_page_size = limit
+            stmt = stmt.limit(limit=limit)
+
+        if with_pagination_meta and effective_page_size:
+            num_page = ceil(num_data / effective_page_size) if num_data > 0 else 1
+
     results = db.execute(stmt).scalars().all()
+
+    if with_pagination_meta:
+        return results, num_data, num_page
+
     return results
 
 

@@ -54,8 +54,8 @@ from schemas.schedule import (
     ScheduleDetail,
     ScheduleQuery,
     ScheduleResponse,
+    ScheduleSpeakerItem,
     ScheduleTypeInfo,
-    SimplePublicSpeakerInfo,
     UpdateScheduleRequest,
 )
 
@@ -96,27 +96,21 @@ async def create_schedule(
         if schedule_type is None:
             return common_response(BadRequest(message="Schedule type not found"))
 
-        if request.speaker_id is not None:
-            speaker = speakerRepo.get_speaker_by_id(db=db, id=str(request.speaker_id))
-            if speaker is None:
-                return common_response(BadRequest(message="Speaker not found"))
-
-            is_speaker_already_scheduled = scheduleRepo.is_speaker_already_scheduled(
-                db=db,
-                speaker_id=request.speaker_id,
-            )
-            if is_speaker_already_scheduled:
-                return common_response(
-                    BadRequest(
-                        message="Speaker is already scheduled for another session"
+        if request.speakers:
+            for item in request.speakers:
+                speaker = speakerRepo.get_speaker_by_id(db=db, id=str(item.speaker_id))
+                if speaker is None:
+                    return common_response(
+                        BadRequest(
+                            message=f"Speaker with id {item.speaker_id} not found"
+                        )
                     )
-                )
 
         # Create schedule
         schedule = scheduleRepo.create_schedule(
             db=db,
             title=request.title,
-            speaker_id=request.speaker_id,
+            speakers=request.speakers,
             room_id=request.room_id,
             schedule_type_id=request.schedule_type_id,
             description=request.description,
@@ -212,11 +206,10 @@ async def get_schedule_cms(
                         ScheduleCMSResponseItem(
                             id=str(r.id),
                             title=r.title,
-                            speaker=(
-                                SimplePublicSpeakerInfo.model_validate(r.speaker)
-                                if r.speaker is not None
-                                else None
-                            ),
+                            speakers=[
+                                ScheduleSpeakerItem.model_validate(s)
+                                for s in r.speakers
+                            ],
                             room=RoomInfo.model_validate(r.room),
                             schedule_type=ScheduleTypeInfo.model_validate(
                                 r.schedule_type
@@ -352,21 +345,15 @@ async def update_schedule(
             if schedule_type is None:
                 return common_response(BadRequest(message="Schedule type not found"))
 
-        if request.speaker_id and request.speaker_id != schedule.speaker_id:
-            speaker = speakerRepo.get_speaker_by_id(db=db, id=str(request.speaker_id))
-            if speaker is None:
-                return common_response(BadRequest(message="Speaker not found"))
-
-            is_speaker_already_scheduled = scheduleRepo.is_speaker_already_scheduled(
-                db=db,
-                speaker_id=request.speaker_id,
-            )
-            if is_speaker_already_scheduled:
-                return common_response(
-                    BadRequest(
-                        message="Speaker is already scheduled for another session"
+        if request.speakers is not None:
+            for item in request.speakers:
+                speaker = speakerRepo.get_speaker_by_id(db=db, id=str(item.speaker_id))
+                if speaker is None:
+                    return common_response(
+                        BadRequest(
+                            message=f"Speaker with id {item.speaker_id} not found"
+                        )
                     )
-                )
 
         start_time = schedule.start
         if request.start is not None:
@@ -383,7 +370,7 @@ async def update_schedule(
             title=request.title,
             start=request.start,
             end=request.end,
-            speaker_id=request.speaker_id,
+            speakers=request.speakers,
             room_id=request.room_id,
             schedule_type_id=request.schedule_type_id,
             description=request.description,

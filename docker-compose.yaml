@@ -13,9 +13,34 @@ services:
     networks:
       - ${NETWORK_NAME}
     labels:
-      com.datadoghq.ad.logs: '[{"source": "python", "service": "pyconid25-be"}]'
+      com.datadoghq.ad.logs: '[{"source": "python", "service": "pyconid26-be"}]'
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  worker:
+    image: ${REGISTRY}/${GHCR_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}
+    container_name: ${APP_NAME}-worker
+    restart: always
+    command: ["python", "-m", "worker"]
+    env_file:
+      - ./.env
+    volumes:
+      - ./.env:/app/.env
+    networks:
+      - ${NETWORK_NAME}
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "python", "service": "pyconid26-be-worker"}]'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
       timeout: 10s
       retries: 3

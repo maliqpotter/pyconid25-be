@@ -88,5 +88,15 @@ def checkin_example_data():
         initialize_checkin_data(db=session)
 
 
+@app.command()
+def run_scheduler(
+    host: str = "0.0.0.0",
+    port: int = 8001,
+):
+    from worker.scheduler import run
+
+    run(host=host, port=port)
+
+
 if __name__ == "__main__":
     app()

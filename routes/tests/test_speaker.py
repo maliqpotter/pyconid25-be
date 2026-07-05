@@ -14,6 +14,7 @@ from models.Room import Room
 from models.Schedule import Schedule
 from models.ScheduleType import ScheduleType
 from models.Speaker import Speaker
+from models.SpeakerSchedule import SpeakerSchedule
 from models.SpeakerType import SpeakerType
 from models.User import MANAGEMENT_PARTICIPANT, User
 from schemas.speaker import SpeakerDetailResponse
@@ -503,21 +504,33 @@ class TestSpeaker(IsolatedAsyncioTestCase):
             id=uuid.uuid4(),
             title="Opening Keynote",
             description="Opening session",
-            speaker_id=speaker.id,
             room_id=room.id,
             schedule_type_id=schedule_type.id,
             start=start_time,
             end=end_time,
         )
         self.db.add(schedule)
+        self.db.flush()
+        self.db.add(
+            SpeakerSchedule(
+                speaker_id=speaker.id,
+                schedule_id=schedule.id,
+                type="Main Speaker",
+                order=1,
+            )
+        )
         self.db.commit()
 
         response = client.get(f"/speaker/{str(speaker.id)}/schedule/")
         self.assertEqual(response.status_code, 200)
         body = response.json()
 
-        self.assertEqual(str(schedule.id), body["id"])
-        self.assertEqual(schedule.title, body["title"])
+        # Setelah many-to-many, satu speaker bisa punya banyak schedule,
+        # sehingga endpoint mengembalikan list.
+        self.assertIsInstance(body, list)
+        self.assertEqual(len(body), 1)
+        self.assertEqual(str(schedule.id), body[0]["id"])
+        self.assertEqual(schedule.title, body[0]["title"])
 
     def tearDown(self):
         self.db.close()

@@ -120,6 +120,19 @@ def get_meter(name: str = "pyconid25-be"):
     return metrics.get_meter(name)
 
 
+task_failure_counter = None
+
+
+def record_task_failure(task_name: str) -> None:
+    global task_failure_counter
+    if task_failure_counter is None:
+        task_failure_counter = get_meter().create_counter(
+            "pycon_scheduler_task_failures_total",
+            description="Number of times a periodic background task has failed",
+        )
+    task_failure_counter.add(1, {"task": task_name})
+
+
 def amount_bucket(amount: int | None) -> str:
     if not amount or amount <= 0:
         return "free"

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -156,7 +157,7 @@ async def get_speaker_by_id(
 @router.get(
     "/{id}/schedule/",
     responses={
-        "200": {"model": PublicScheduleDetail},
+        "200": {"model": List[PublicScheduleDetail]},
         "404": {"model": NotFoundResponse},
         "500": {"model": InternalServerErrorResponse},
     },
@@ -166,15 +167,16 @@ async def get_schedule_by_speaker(
     db: Session = Depends(get_db_sync),
 ):
     try:
-        schedule = scheduleRepo.get_schedule_by_speaker_id(db, id)
-        if not schedule:
+        schedules = scheduleRepo.get_schedules_by_speaker_id(db, id)
+        if not schedules:
             return common_response(NotFound(message="Speaker schedule not found"))
 
         return common_response(
             Ok(
-                data=PublicScheduleDetail.model_validate(schedule).model_dump(
-                    mode="json"
-                )
+                data=[
+                    PublicScheduleDetail.model_validate(s).model_dump(mode="json")
+                    for s in schedules
+                ]
             )
         )
     except Exception as e:
