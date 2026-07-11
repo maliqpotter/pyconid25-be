@@ -78,6 +78,7 @@ from routes.auth import router as auth_router  # noqa: E402
 from routes.locations import router as locations_router  # noqa: E402
 from routes.organizer import router as organizer_router  # noqa: E402
 from routes.organizer_type import router as organizer_type_router  # noqa: E402
+from routes.patron import router as patron_router  # noqa: E402
 from routes.payment import router as payment_router  # noqa: E402
 from routes.room import router as room_router  # noqa: E402
 from routes.schedule import router as schedule_router  # noqa: E402
@@ -99,6 +100,7 @@ app.include_router(ticket_router)
 app.include_router(room_router)
 app.include_router(speaker_router)
 app.include_router(schedule_router)
+app.include_router(patron_router)
 app.include_router(payment_router)
 app.include_router(streaming_router)
 app.include_router(streaming_analytics_router)
