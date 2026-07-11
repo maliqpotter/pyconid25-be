@@ -107,6 +107,23 @@ class TestPatron(IsolatedAsyncioTestCase):
             "gold",
             "silver",
         ]
+        assert all("has_image" in patron for patron in data["results"])
+        assert (
+            next(
+                patron
+                for patron in data["results"]
+                if patron["id"] == str(self.image_patron_id)
+            )["has_image"]
+            is True
+        )
+        assert (
+            next(
+                patron
+                for patron in data["results"]
+                if patron["id"] == str(self.active_patron_id)
+            )["has_image"]
+            is False
+        )
         assert all(
             patron["id"] != str(self.deleted_patron_id) for patron in data["results"]
         )

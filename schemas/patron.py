@@ -18,8 +18,12 @@ class PatronResponseItem(BaseModel):
     tier: str
 
 
+class PatronListResponseItem(PatronResponseItem):
+    has_image: bool
+
+
 class PatronListResponse(BaseModel):
-    results: list[PatronResponseItem]
+    results: list[PatronListResponseItem]
 
 
 def patron_response_item_from_model(patron: Patron) -> PatronResponseItem:
@@ -32,5 +36,13 @@ def patron_response_item_from_model(patron: Patron) -> PatronResponseItem:
 
 def patron_list_response_from_models(patrons: Sequence[Patron]) -> PatronListResponse:
     return PatronListResponse(
-        results=[patron_response_item_from_model(patron) for patron in patrons]
+        results=[
+            PatronListResponseItem(
+                id=str(patron.id),
+                name=patron.name,
+                tier=patron.tier,
+                has_image=patron.image is not None,
+            )
+            for patron in patrons
+        ]
     )
