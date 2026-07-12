@@ -25,4 +25,3 @@ class Patron(Base):
         DateTime(timezone=True),
         default=datetime.datetime.now(datetime.timezone.utc),
     )
-    deleted_at = mapped_column("deleted_at", DateTime(timezone=True), nullable=True)

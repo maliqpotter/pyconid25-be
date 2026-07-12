@@ -15,16 +15,12 @@ def get_patrons(db: Session) -> Sequence[Patron]:
         (Patron.tier == "silver", 4),
         else_=5,
     )
-    stmt = (
-        select(Patron)
-        .where(Patron.deleted_at.is_(None))
-        .order_by(tier_order, Patron.name)
-    )
+    stmt = select(Patron).order_by(tier_order, Patron.name)
     return db.scalars(stmt).all()
 
 
 def get_patron_by_id(db: Session, id: str) -> Patron | None:
-    stmt = select(Patron).where(Patron.id == id, Patron.deleted_at.is_(None))
+    stmt = select(Patron).where(Patron.id == id)
     return db.execute(stmt).scalar()
 
 
@@ -66,5 +62,5 @@ def update_patron(
 
 
 def delete_patron(db: Session, patron: Patron) -> None:
-    patron.deleted_at = get_current_time_in_timezone(TZ)
+    db.delete(patron)
     db.commit()

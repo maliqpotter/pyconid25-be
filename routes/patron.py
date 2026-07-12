@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from core.file import get_file, is_over_max_file_size, upload_file
+from core.file import delete_file, get_file, is_over_max_file_size, upload_file
 from core.log import logger
 from core.responses import (
     BadRequest,
@@ -227,7 +227,10 @@ def delete_patron(
             return common_response(
                 NotFound(message=f"patron with id = {patron_id} not found")
             )
+        image_path = patron.image
         patronRepo.delete_patron(db=db, patron=patron)
+        if image_path is not None:
+            delete_file(path=image_path)
         return common_response(NoContent())
     except Exception as e:
         logger.error(f"Error deleting patron: {e}")

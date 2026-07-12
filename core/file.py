@@ -27,3 +27,9 @@ def get_file(
         return FileResponse(path=path)
     else:
         return None
+
+
+def delete_file(path: str) -> None:
+    full_path = f"{FILE_STORAGE_PATH}/{path}"
+    if os.path.exists(path=full_path):
+        os.remove(full_path)

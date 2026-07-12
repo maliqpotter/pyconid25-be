@@ -1,4 +1,3 @@
-import datetime
 import os
 import uuid
 from unittest import IsolatedAsyncioTestCase
@@ -29,7 +28,6 @@ class TestPatron(IsolatedAsyncioTestCase):
         )
 
         self.active_patron_id = uuid.uuid4()
-        self.deleted_patron_id = uuid.uuid4()
         self.image_patron_id = uuid.uuid4()
         self.image_path = "patron/test-patron.png"
         os.makedirs(
@@ -59,14 +57,6 @@ class TestPatron(IsolatedAsyncioTestCase):
                 id=self.silver_patron_id,
                 name="Silver Patron",
                 tier="silver",
-            )
-        )
-        self.session.add(
-            Patron(
-                id=self.deleted_patron_id,
-                name="Deleted Patron",
-                tier="silver",
-                deleted_at=datetime.datetime.now(datetime.timezone.utc),
             )
         )
         self.user = User(
@@ -123,9 +113,6 @@ class TestPatron(IsolatedAsyncioTestCase):
                 if patron["id"] == str(self.active_patron_id)
             )["has_image"]
             is False
-        )
-        assert all(
-            patron["id"] != str(self.deleted_patron_id) for patron in data["results"]
         )
 
     async def test_create_patron_requires_management_user(self):
@@ -215,7 +202,24 @@ class TestPatron(IsolatedAsyncioTestCase):
         patron = self.session.execute(
             select(Patron).where(Patron.id == self.active_patron_id)
         ).scalar()
-        assert patron.deleted_at is not None
+        assert patron is None
+
+    async def test_delete_patron_removes_image_file(self):
+        token = await self.get_management_token()
+        image_full_path = f"{FILE_STORAGE_PATH}/{self.image_path}"
+        assert os.path.exists(image_full_path)
+
+        response = self.client.delete(
+            f"/patron/{self.image_patron_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 204
+        patron = self.session.execute(
+            select(Patron).where(Patron.id == self.image_patron_id)
+        ).scalar()
+        assert patron is None
+        assert not os.path.exists(image_full_path)
 
     async def test_get_patron_image_is_public(self):
         response = self.client.get(f"/patron/{self.image_patron_id}/image/")
