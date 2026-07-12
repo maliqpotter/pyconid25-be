@@ -74,3 +74,4 @@ from models.SpeakerType import SpeakerType  # NOQA
 from models.Volunteer import Volunteer  # NOQA
 from models.OrganizerType import OrganizerType  # NOQA
 from models.Organizer import Organizer  # NOQA
+from models.Patron import Patron  # NOQA

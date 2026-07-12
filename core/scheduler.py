@@ -1,7 +1,9 @@
+from contextlib import contextmanager
+
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from psycopg.errors import DuplicateTable, UniqueViolation
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 
 from core.log import logger
@@ -32,6 +34,17 @@ except (IntegrityError, ProgrammingError) as e:
     if not isinstance(e.orig, (UniqueViolation, DuplicateTable)):
         raise
 scheduler = BackgroundScheduler(jobstores={"default": _jobstore})
+SCHEDULER_JOBSTORE_LOCK_ID = 2025071101
+
+
+@contextmanager
+def scheduler_jobstore_lock():
+    with _jobstore_engine.begin() as conn:
+        conn.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_id)"),
+            {"lock_id": SCHEDULER_JOBSTORE_LOCK_ID},
+        )
+        yield
 
 
 def register_jobs() -> None:
@@ -64,10 +77,19 @@ def register_jobs() -> None:
     )
 
 
-def start_scheduler():
-    if not scheduler.running:
+def start_scheduler(use_lock: bool = True):
+    if scheduler.running:
+        return
+
+    if not use_lock:
         scheduler.start()
         logger.info("Background scheduler started")
+        return
+
+    with scheduler_jobstore_lock():
+        if not scheduler.running:
+            scheduler.start()
+            logger.info("Background scheduler started")
 
 
 def stop_scheduler():
