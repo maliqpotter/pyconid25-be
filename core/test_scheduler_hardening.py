@@ -3,7 +3,11 @@
 from unittest import IsolatedAsyncioTestCase
 import importlib
 
-from core.scheduler import register_jobs, scheduler  # noqa: F401  ensure table creation
+from core.scheduler import (
+    register_jobs,
+    scheduler,
+    scheduler_jobstore_lock,
+)  # noqa: F401  ensure table creation
 from sqlalchemy import text
 
 from models import engine
@@ -24,21 +28,22 @@ class TestSchedulerJobStore(IsolatedAsyncioTestCase):
     def test_register_jobs_persists_into_jobstore(self):
         from core.scheduler import start_scheduler, stop_scheduler
 
-        with engine.begin() as conn:
-            conn.execute(text("DELETE FROM apscheduler_jobs"))
+        with scheduler_jobstore_lock():
+            with engine.begin() as conn:
+                conn.execute(text("DELETE FROM apscheduler_jobs"))
 
-        register_jobs()
-        start_scheduler()
-        try:
-            with engine.connect() as conn:
-                stored_ids = [
-                    row[0]
-                    for row in conn.execute(
-                        text("SELECT id FROM apscheduler_jobs ORDER BY id")
-                    )
-                ]
-        finally:
-            stop_scheduler()
+            register_jobs()
+            start_scheduler(use_lock=False)
+            try:
+                with engine.connect() as conn:
+                    stored_ids = [
+                        row[0]
+                        for row in conn.execute(
+                            text("SELECT id FROM apscheduler_jobs ORDER BY id")
+                        )
+                    ]
+            finally:
+                stop_scheduler()
 
         self.assertIn("cleanup_abandoned_watch_sessions", stored_ids)
         self.assertIn("sync_pending_payments", stored_ids)
@@ -88,16 +93,17 @@ class TestWorkerHealthcheck(IsolatedAsyncioTestCase):
         self.assertEqual(body["status"], "degraded")
         self.assertEqual(body["role"], "worker")
 
-        register_jobs()
-        start_scheduler()
-        try:
-            r = client.get("/health")
-            body = r.json()
-            self.assertEqual(body["status"], "ok")
-            self.assertTrue(body["scheduler_running"])
-            self.assertIn("sync_pending_payments", body["jobs"])
-        finally:
-            stop_scheduler()
+        with scheduler_jobstore_lock():
+            register_jobs()
+            start_scheduler(use_lock=False)
+            try:
+                r = client.get("/health")
+                body = r.json()
+                self.assertEqual(body["status"], "ok")
+                self.assertTrue(body["scheduler_running"])
+                self.assertIn("sync_pending_payments", body["jobs"])
+            finally:
+                stop_scheduler()
 
     def test_worker_package_exposes_run_entrypoint(self):
         import inspect
