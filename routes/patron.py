@@ -18,8 +18,9 @@ from core.responses import (
 )
 from core.security import check_permissions, get_current_user
 from models import get_db_sync
-from models.User import MANAGEMENT_PARTICIPANT, User
+from models.User import MANAGEMENT_PARTICIPANT, PATRON_PARTICIPANT, User
 from repository import patron as patronRepo
+from repository import user as userRepo
 from schemas.auth import AuthorizationStatusEnum
 from schemas.common import (
     BadRequestResponse,
@@ -32,6 +33,7 @@ from schemas.patron import (
     PatronListResponse,
     PatronResponseItem,
     PatronTier,
+    PatronUserResponse,
     patron_list_response_from_models,
     patron_response_item_from_model,
 )
@@ -261,4 +263,65 @@ def get_patron_image(patron_id: str, db: Session = Depends(get_db_sync)):
         return image
     except Exception as e:
         logger.error(f"Error fetching patron image: {e}")
+        return common_response(InternalServerError(error=str(e)))
+
+
+@router.get(
+    "/user/",
+    responses={
+        "200": {"model": PatronUserResponse},
+        "500": {"model": InternalServerErrorResponse},
+    },
+)
+def get_user_patron(db: Session = Depends(get_db_sync)):
+    try:
+        users = userRepo.get_user_patron(db=db)
+        data = PatronUserResponse(
+            results=[
+                PatronUserResponse.DetailUser(
+                    id=str(user.id),
+                    username=user.username,
+                    first_name=user.first_name,
+                    last_name=user.last_name,
+                    email=user.email,
+                )
+                for user in users
+            ]
+        )
+        return common_response(Ok(data=data.model_dump()))
+    except Exception as e:
+        logger.error(f"Error fetching patron users: {e}")
+        return common_response(InternalServerError(error=str(e)))
+
+
+@router.get(
+    "/user/{user_id}/image/",
+    response_class=FileResponse,
+    responses={
+        "404": {"model": NotFoundResponse},
+        "500": {"model": InternalServerErrorResponse},
+    },
+)
+def get_user_patron_image(user_id: str, db: Session = Depends(get_db_sync)):
+    try:
+        user = userRepo.get_user_by_id(db=db, id=user_id)
+        if user is None or user.participant_type != PATRON_PARTICIPANT:
+            return common_response(
+                NotFound(message=f"Profile picture for patron with {user_id} not found")
+            )
+        if user.profile_picture is None:
+            return common_response(
+                NotFound(message=f"Profile picture for patron with {user_id} not found")
+            )
+
+        image = get_file(path=user.profile_picture)
+        if image is None:
+            return common_response(
+                NotFound(
+                    message=f"Profile picture file for patron with {user_id} not found"
+                )
+            )
+        return image
+    except Exception as e:
+        logger.error(f"Error fetching patron user image: {e}")
         return common_response(InternalServerError(error=str(e)))

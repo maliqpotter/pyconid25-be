@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from models.Organizer import Organizer
-from models.User import VOLUNTEER_PARTICIPANT, User
+from models.User import PATRON_PARTICIPANT, VOLUNTEER_PARTICIPANT, User
 from models.Volunteer import Volunteer
 from schemas.user_profile import UserProfileDB
 
@@ -234,6 +234,21 @@ def get_user_for_volunteer(db: Session, search: Optional[str] = None) -> list[Us
         .join(Volunteer, User.volunteer, isouter=True)
         .where(Volunteer.id.is_(None))
     )
+    if search:
+        search_pattern = f"%{search}%"
+        stmt = stmt.where(
+            (User.username.ilike(search_pattern))
+            | (User.first_name.ilike(search_pattern))
+            | (User.last_name.ilike(search_pattern))
+            | (User.email.ilike(search_pattern))
+        )
+    stmt = stmt.order_by(User.email.asc())
+    results = db.execute(stmt).scalars().all()
+    return results
+
+
+def get_user_patron(db: Session, search: Optional[str] = None) -> list[User]:
+    stmt = select(User).where(User.participant_type == PATRON_PARTICIPANT)
     if search:
         search_pattern = f"%{search}%"
         stmt = stmt.where(

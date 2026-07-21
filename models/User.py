@@ -5,6 +5,7 @@ from sqlalchemy.orm import mapped_column, Mapped, relationship
 
 VOLUNTEER_PARTICIPANT = "Volunteer"
 MANAGEMENT_PARTICIPANT = "Management"
+PATRON_PARTICIPANT = "Patron"
 
 
 class User(Base):
