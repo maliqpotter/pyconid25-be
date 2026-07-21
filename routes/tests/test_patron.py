@@ -10,7 +10,7 @@ from core.security import generate_token_from_user
 from main import app
 from models import db, engine, get_db_sync, get_db_sync_for_test
 from models.Patron import Patron
-from models.User import MANAGEMENT_PARTICIPANT, User
+from models.User import MANAGEMENT_PARTICIPANT, PATRON_PARTICIPANT, User
 from settings import FILE_STORAGE_PATH
 
 
@@ -63,7 +63,16 @@ class TestPatron(IsolatedAsyncioTestCase):
             username="admin",
             participant_type=MANAGEMENT_PARTICIPANT,
         )
+        self.patron_user = User(
+            username="patron-user",
+            participant_type=PATRON_PARTICIPANT,
+            first_name="Patron",
+            last_name="User",
+            email="patron@example.com",
+            profile_picture=self.image_path,
+        )
         self.session.add(self.user)
+        self.session.add(self.patron_user)
         self.session.commit()
 
         app.dependency_overrides[get_db_sync] = get_db_sync_for_test(db=self.session)
@@ -232,3 +241,33 @@ class TestPatron(IsolatedAsyncioTestCase):
 
         assert response.status_code == 404
         assert response.json()["message"] == "Patron image not found"
+
+    async def test_get_user_patron(self):
+        response = self.client.get("/patron/user/")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "results": [
+                {
+                    "id": str(self.patron_user.id),
+                    "username": "patron-user",
+                    "first_name": "Patron",
+                    "last_name": "User",
+                    "email": "patron@example.com",
+                }
+            ]
+        }
+
+    async def test_get_user_patron_image(self):
+        response = self.client.get(f"/patron/user/{self.patron_user.id}/image/")
+
+        assert response.status_code == 200
+        assert response.content == b"test-image"
+
+    async def test_get_user_patron_image_not_found(self):
+        response = self.client.get(f"/patron/user/{self.user.id}/image/")
+
+        assert response.status_code == 404
+        assert response.json()["message"] == (
+            f"Profile picture for patron with {self.user.id} not found"
+        )

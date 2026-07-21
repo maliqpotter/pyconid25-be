@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Sequence
+from typing import Optional, Sequence
 from pydantic import BaseModel
 
 from models.Patron import Patron
@@ -46,3 +46,14 @@ def patron_list_response_from_models(patrons: Sequence[Patron]) -> PatronListRes
             for patron in patrons
         ]
     )
+
+
+class PatronUserResponse(BaseModel):
+    class DetailUser(BaseModel):
+        id: str
+        username: Optional[str] = None
+        first_name: Optional[str] = None
+        last_name: Optional[str] = None
+        email: Optional[str] = None
+
+    results: list[DetailUser]
