@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from core.security import generate_token_from_user
 from models import engine, db, get_db_sync, get_db_sync_for_test
+from models.Ticket import Ticket
 from models.User import MANAGEMENT_PARTICIPANT, User
 from models.Voucher import Voucher
 from main import app
@@ -70,6 +71,76 @@ class TestVoucher(IsolatedAsyncioTestCase):
         assert data["quota"] == 50
         assert data["type"] == "Speaker"
         assert data["is_active"] is False
+
+    async def test_create_and_update_voucher_ticket_restrictions(self):
+        ticket_one = Ticket(
+            name="Student Plan",
+            price=100000,
+            user_participant_type="In Person Participant",
+        )
+        ticket_two = Ticket(
+            name="Regular Plan",
+            price=200000,
+            user_participant_type="In Person Participant",
+        )
+        self.session.add_all([ticket_one, ticket_two])
+        self.session.commit()
+
+        token, _ = await generate_token_from_user(db=self.session, user=self.user)
+        response = self.client.post(
+            "/voucher/",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "code": "STUDENTONLY",
+                "quota": 10,
+                "ticket_ids": [str(ticket_one.id)],
+            },
+        )
+
+        assert response.status_code == 200
+        voucher_id = response.json()["id"]
+
+        detail_response = self.client.get(
+            f"/voucher/{voucher_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert detail_response.status_code == 200
+        assert detail_response.json()["tickets"] == [
+            {"id": str(ticket_one.id), "name": "Student Plan"}
+        ]
+
+        update_response = self.client.put(
+            f"/voucher/{voucher_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "code": "STUDENTONLY",
+                "quota": 10,
+                "ticket_ids": [str(ticket_two.id)],
+            },
+        )
+        assert update_response.status_code == 200
+        updated_detail_response = self.client.get(
+            f"/voucher/{voucher_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert updated_detail_response.json()["tickets"] == [
+            {"id": str(ticket_two.id), "name": "Regular Plan"}
+        ]
+
+    async def test_create_voucher_with_unknown_ticket_is_rejected(self):
+        token, _ = await generate_token_from_user(db=self.session, user=self.user)
+        response = self.client.post(
+            "/voucher/",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "code": "UNKNOWN-TICKET",
+                "quota": 10,
+                "ticket_ids": [str(uuid.uuid4())],
+            },
+        )
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "One or more tickets not found"
 
     async def test_create_voucher_with_invalid_participant_type(self):
         """Test that creating voucher with invalid participant type is rejected"""

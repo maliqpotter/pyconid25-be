@@ -1,7 +1,8 @@
 import uuid
 from sqlalchemy import UUID, String, Integer, Boolean
-from sqlalchemy.orm import mapped_column, Mapped
+from sqlalchemy.orm import mapped_column, Mapped, relationship
 from models import Base
+from models.VoucherTicket import VoucherTicket
 
 
 class Ticket(Base):
@@ -19,3 +20,6 @@ class Ticket(Base):
     is_active: Mapped[bool] = mapped_column("is_active", Boolean, default=True)
     description: Mapped[str] = mapped_column("description", String, nullable=True)
     order: Mapped[int] = mapped_column("order", Integer, nullable=True)
+    vouchers = relationship(
+        "Voucher", secondary=lambda: VoucherTicket.__table__, back_populates="tickets"
+    )

@@ -1,6 +1,6 @@
 from typing import List, Optional, TypedDict
 from fastapi import Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from uuid import UUID
 from schemas.user_profile import ParticipantType
 
@@ -23,6 +23,7 @@ class VoucherCreateRequest(BaseModel):
     type: ParticipantType | None = None
     email_whitelist: EmailWhiteListDict | None = None
     is_active: bool = False
+    ticket_ids: List[UUID] = Field(default_factory=list)
 
 
 class VoucherUpdateRequest(BaseModel):
@@ -32,6 +33,7 @@ class VoucherUpdateRequest(BaseModel):
     type: ParticipantType | None = None
     email_whitelist: EmailWhiteListDict | None = None
     is_active: bool = False
+    ticket_ids: List[UUID] = Field(default_factory=list)
 
 
 class VoucherUpdateStatusRequest(BaseModel):
@@ -54,6 +56,13 @@ class VoucherUpdateTypeRequest(BaseModel):
     type: ParticipantType
 
 
+class VoucherTicketResponse(BaseModel):
+    id: str
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
 class VoucherResponse(BaseModel):
     id: str
     code: str
@@ -62,6 +71,7 @@ class VoucherResponse(BaseModel):
     email_whitelist: EmailWhiteListDict | None = None
     quota: int
     is_active: bool
+    tickets: List[VoucherTicketResponse] = Field(default_factory=list)
 
 
 class VoucherResponseItem(BaseModel):

@@ -68,6 +68,7 @@ from models.Schedule import Schedule  # NOQA
 from models.Speaker import Speaker  # NOQA
 from models.SpeakerSchedule import SpeakerSchedule  # NOQA
 from models.Voucher import Voucher  # NOQA
+from models.VoucherTicket import VoucherTicket  # NOQA
 from models.Stream import Stream  # NOQA
 from models.StreamWatchSession import StreamWatchSession  # NOQA
 from models.SpeakerType import SpeakerType  # NOQA

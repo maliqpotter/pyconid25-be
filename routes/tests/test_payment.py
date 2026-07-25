@@ -13,6 +13,7 @@ from models.Ticket import Ticket
 from models.Payment import PaymentStatus
 from models.Token import Token
 from models.Voucher import Voucher
+from models.VoucherTicket import VoucherTicket
 from core.security import generate_hash_password
 from repository import payment as paymentRepo
 from main import app
@@ -218,6 +219,80 @@ class TestPayment(IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 400)
         data = response.json()
         self.assertEqual(data["message"], "Ticket not found.")
+
+    async def test_voucher_ticket_restrictions_are_enforced(self):
+        unavailable_ticket = Ticket(
+            name="Unavailable for Voucher",
+            price=250000,
+            user_participant_type="In Person",
+            is_active=True,
+        )
+        restricted_voucher = Voucher(
+            code="STUDENTONLY",
+            value=100000,
+            quota=2,
+            is_active=True,
+        )
+        unrestricted_voucher = Voucher(
+            code="ALLTICKETS",
+            value=100000,
+            quota=2,
+            is_active=True,
+        )
+        self.db.add_all([unavailable_ticket, restricted_voucher, unrestricted_voucher])
+        self.db.commit()
+        self.db.add(
+            VoucherTicket(
+                voucher_id=restricted_voucher.id,
+                ticket_id=self.test_ticket.id,
+            )
+        )
+        self.db.commit()
+
+        headers = {"Authorization": f"Bearer {self.test_token}"}
+        rejected_validation = self.client.get(
+            "/payment/voucher/validate",
+            params={
+                "code": "STUDENTONLY",
+                "ticket_id": str(unavailable_ticket.id),
+            },
+            headers=headers,
+        )
+        self.assertEqual(rejected_validation.status_code, 400)
+        self.assertEqual(
+            rejected_validation.json()["message"],
+            "Voucher cannot be used for this ticket.",
+        )
+
+        accepted_validation = self.client.get(
+            "/payment/voucher/validate",
+            params={"code": "STUDENTONLY", "ticket_id": str(self.test_ticket.id)},
+            headers=headers,
+        )
+        self.assertEqual(accepted_validation.status_code, 200)
+
+        rejected_payment = self.client.post(
+            "/payment/",
+            json={
+                "ticket_id": str(unavailable_ticket.id),
+                "voucher_code": "STUDENTONLY",
+            },
+            headers=headers,
+        )
+        self.assertEqual(rejected_payment.status_code, 400)
+        self.assertEqual(
+            rejected_payment.json()["message"],
+            "Voucher cannot be used for this ticket.",
+        )
+        self.db.refresh(restricted_voucher)
+        self.assertEqual(restricted_voucher.quota, 2)
+
+        unrestricted_validation = self.client.get(
+            "/payment/voucher/validate",
+            params={"code": "ALLTICKETS", "ticket_id": str(unavailable_ticket.id)},
+            headers=headers,
+        )
+        self.assertEqual(unrestricted_validation.status_code, 200)
 
     async def test_create_payment_ticket_sold_out(self):
         sold_out_ticket = Ticket(
