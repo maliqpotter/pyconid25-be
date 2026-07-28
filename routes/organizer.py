@@ -37,8 +37,10 @@ from schemas.organizer import (
     organizer_detail_response_from_model,
     organizer_response_item_from_model,
     organizer_detail_response_list_from_models,
+    organizer_public_detail_response_list_from_models,
     OrganizerQuery,
     OrganizerDetailResponseList,
+    PublicOrganizerDetailResponseList,
     OrganizersByTypeAll,
     OrganizersByType,
     OrganizerResponseItem,
@@ -93,7 +95,7 @@ def get_organizers_grouped_by_type(
 @router.get(
     "/public",
     responses={
-        "200": {"model": OrganizerDetailResponseList},
+        "200": {"model": PublicOrganizerDetailResponseList},
         "404": {"model": NotFoundResponse},
         "500": {"model": InternalServerErrorResponse},
     },
@@ -108,7 +110,7 @@ def get_organizers_public(
         if data is None:
             return common_response(NotFound(message="No organizers found"))
 
-        model_data = organizer_detail_response_list_from_models(data)
+        model_data = organizer_public_detail_response_list_from_models(data)
         return common_response(Ok(data=model_data.model_dump()))
     except Exception as e:
         logger.error(f"Error fetching organizers by type: {e}")

@@ -29,6 +29,64 @@ class TestOrganizer(IsolatedAsyncioTestCase):
         # "create_savepoint" join_transaction_mode
         self.db = db(bind=self.connection, join_transaction_mode="create_savepoint")
 
+    async def test_get_organizers_public_job_fields_respect_privacy(self):
+        # Given
+        organizer_type = OrganizerType(name="Core Team")
+        self.db.add(organizer_type)
+
+        shared_user = User(
+            username="shared-organizer",
+            company="PyCon Indonesia",
+            job_category="Technology",
+            job_title="Software Engineer",
+            share_my_job_and_company=True,
+        )
+        hidden_user = User(
+            username="hidden-organizer",
+            company="Private Company",
+            job_category="Finance",
+            job_title="Accountant",
+            share_my_job_and_company=False,
+        )
+        unset_user = User(
+            username="unset-organizer",
+            company="Undisclosed Company",
+            job_category="Operations",
+            job_title="Coordinator",
+            share_my_job_and_company=None,
+        )
+        shared_organizer = Organizer(user=shared_user, organizer_type=organizer_type)
+        hidden_organizer = Organizer(user=hidden_user, organizer_type=organizer_type)
+        unset_organizer = Organizer(user=unset_user, organizer_type=organizer_type)
+        self.db.add_all([shared_organizer, hidden_organizer, unset_organizer])
+        self.db.commit()
+
+        app.dependency_overrides[get_db_sync] = get_db_sync_for_test(db=self.db)
+        client = TestClient(app)
+
+        # When
+        response = client.get("/organizer/public")
+
+        # Expect
+        self.assertEqual(response.status_code, 200)
+        organizers = {item["id"]: item for item in response.json()["results"]}
+
+        shared_response = organizers[str(shared_organizer.id)]["user"]
+        self.assertEqual(shared_response["company"], "PyCon Indonesia")
+        self.assertEqual(shared_response["job_category"], "Technology")
+        self.assertEqual(shared_response["job_title"], "Software Engineer")
+        self.assertNotIn("share_my_job_and_company", shared_response)
+        self.assertIn("organizer_type", organizers[str(shared_organizer.id)])
+
+        for organizer in (hidden_organizer, unset_organizer):
+            organizer_user = organizers[str(organizer.id)]["user"]
+            self.assertIn("company", organizer_user)
+            self.assertIn("job_category", organizer_user)
+            self.assertIn("job_title", organizer_user)
+            self.assertIsNone(organizer_user["company"])
+            self.assertIsNone(organizer_user["job_category"])
+            self.assertIsNone(organizer_user["job_title"])
+
     async def test_get_all_organizers(self):
         # Given
         user_management = User(
