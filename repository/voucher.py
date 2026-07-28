@@ -1,12 +1,15 @@
 from typing import Optional
 from sqlalchemy import select, func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
+from models.Ticket import Ticket
 from models.Voucher import Voucher
 from schemas.voucher import VoucherResponseItem
 
 
 def get_voucher_by_id(db: Session, id: str) -> Optional[Voucher]:
-    query = select(Voucher).where(Voucher.id == id)
+    query = (
+        select(Voucher).options(selectinload(Voucher.tickets)).where(Voucher.id == id)
+    )
     voucher = db.execute(query).scalar()
     return voucher
 
@@ -19,7 +22,9 @@ def insert_voucher(
     type: str | None = None,
     email_whitelist: dict | None = None,
     is_active: bool = False,
+    ticket_ids: list[str] | None = None,
 ) -> Voucher:
+    tickets = get_tickets_by_ids(db=db, ticket_ids=ticket_ids or [])
     voucher = Voucher(
         code=code,
         value=value,
@@ -27,6 +32,7 @@ def insert_voucher(
         type=type,
         email_whitelist=email_whitelist,
         is_active=is_active,
+        tickets=tickets,
     )
     db.add(voucher)
     db.commit()
@@ -43,14 +49,17 @@ def update_voucher(
     type: Optional[str] = None,
     email_whitelist: Optional[dict] = None,
     is_active: Optional[bool] = None,
+    ticket_ids: list[str] | None = None,
     is_commit: bool = True,
 ) -> Optional[Voucher]:
+    tickets = get_tickets_by_ids(db=db, ticket_ids=ticket_ids or [])
     voucher.code = code
     voucher.value = value
     voucher.quota = quota
     voucher.type = type
     voucher.email_whitelist = email_whitelist
     voucher.is_active = is_active
+    voucher.tickets = tickets
     if is_commit:
         db.commit()
     return voucher
@@ -146,7 +155,11 @@ def get_vouchers_per_page(
 
 
 def get_voucher_by_code(db: Session, code: str) -> Optional[Voucher]:
-    stmt = select(Voucher).where(func.upper(Voucher.code) == code.strip().upper())
+    stmt = (
+        select(Voucher)
+        .options(selectinload(Voucher.tickets))
+        .where(func.upper(Voucher.code) == code.strip().upper())
+    )
     voucher = db.execute(stmt).scalar()
     return voucher
 
@@ -155,10 +168,12 @@ def validate_and_use_voucher(
     db: Session,
     code: str,
     user_email: str,
+    ticket_id: str | None = None,
 ) -> tuple[Optional[Voucher], Optional[str]]:
     # Lock the voucher row for update to prevent race conditions
     stmt = (
         select(Voucher)
+        .options(selectinload(Voucher.tickets))
         .where(func.upper(Voucher.code) == code.strip().upper())
         .with_for_update()
     )
@@ -183,7 +198,29 @@ def validate_and_use_voucher(
         if whitelist_normalized and user_email_normalized not in whitelist_normalized:
             return None, "You are not authorized to use this voucher."
 
+    if not voucher_can_be_used_for_ticket(voucher=voucher, ticket_id=ticket_id):
+        return None, "Voucher cannot be used for this ticket."
+
     voucher.quota -= 1
     db.flush()
 
     return voucher, None
+
+
+def get_tickets_by_ids(db: Session, ticket_ids: list[str]) -> list[Ticket]:
+    unique_ticket_ids = list(dict.fromkeys(ticket_ids))
+    if not unique_ticket_ids:
+        return []
+
+    tickets = db.scalars(select(Ticket).where(Ticket.id.in_(unique_ticket_ids))).all()
+    if len(tickets) != len(unique_ticket_ids):
+        raise ValueError("One or more tickets not found")
+    return tickets
+
+
+def voucher_can_be_used_for_ticket(voucher: Voucher, ticket_id: str | None) -> bool:
+    return (
+        ticket_id is None
+        or not voucher.tickets
+        or any(str(ticket.id) == str(ticket_id) for ticket in voucher.tickets)
+    )

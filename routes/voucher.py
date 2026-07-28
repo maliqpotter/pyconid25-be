@@ -26,6 +26,7 @@ from schemas.voucher import (
     VoucherResponse,
     VoucherQuery,
     VoucherListResponse,
+    VoucherTicketResponse,
 )
 
 router = APIRouter(prefix="/voucher", tags=["Voucher"])
@@ -80,6 +81,7 @@ def create_voucher(
             type=request.type,
             email_whitelist=request.email_whitelist,
             is_active=request.is_active,
+            ticket_ids=request.ticket_ids,
         )
         return VoucherResponse(
             id=str(voucher.id),
@@ -90,6 +92,8 @@ def create_voucher(
             quota=voucher.quota,
             is_active=voucher.is_active,
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         import traceback
 
@@ -121,6 +125,10 @@ def get_voucher(
         email_whitelist=voucher.email_whitelist,
         quota=voucher.quota,
         is_active=voucher.is_active,
+        tickets=[
+            VoucherTicketResponse(id=str(ticket.id), name=ticket.name)
+            for ticket in voucher.tickets
+        ],
     )
 
 
@@ -141,16 +149,20 @@ def update_voucher_whole(
     if voucher is None:
         raise HTTPException(status_code=404, detail="Voucher not found")
 
-    voucher = update_voucher(
-        db=db,
-        voucher=voucher,
-        code=request.code,
-        value=request.value,
-        quota=request.quota,
-        type=request.type,
-        email_whitelist=request.email_whitelist,
-        is_active=request.is_active,
-    )
+    try:
+        voucher = update_voucher(
+            db=db,
+            voucher=voucher,
+            code=request.code,
+            value=request.value,
+            quota=request.quota,
+            type=request.type,
+            email_whitelist=request.email_whitelist,
+            is_active=request.is_active,
+            ticket_ids=request.ticket_ids,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     return VoucherResponse(
         id=str(voucher.id),
@@ -160,6 +172,10 @@ def update_voucher_whole(
         email_whitelist=voucher.email_whitelist,
         quota=voucher.quota,
         is_active=voucher.is_active,
+        tickets=[
+            VoucherTicketResponse(id=str(ticket.id), name=ticket.name)
+            for ticket in voucher.tickets
+        ],
     )
 
 

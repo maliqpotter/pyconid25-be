@@ -119,6 +119,7 @@ async def close_unpaid_payments_with_mayar(
 )
 async def validate_voucher(
     code: str,
+    ticket_id: Optional[str] = None,
     db: Session = Depends(get_db_sync),
     token: str = Depends(oauth2_scheme),
 ):
@@ -161,6 +162,13 @@ async def validate_voucher(
                 return common_response(
                     BadRequest(message="You are not authorized to use this voucher.")
                 )
+
+        if not voucherRepo.voucher_can_be_used_for_ticket(
+            voucher=voucher, ticket_id=ticket_id
+        ):
+            return common_response(
+                BadRequest(message="Voucher cannot be used for this ticket.")
+            )
 
         return common_response(
             Ok(
@@ -236,7 +244,10 @@ async def create_payment(
         voucher_participant_type = None
         if request.voucher_code:
             voucher, error_msg = voucherRepo.validate_and_use_voucher(
-                db=db, code=request.voucher_code, user_email=user.email
+                db=db,
+                code=request.voucher_code,
+                user_email=user.email,
+                ticket_id=request.ticket_id,
             )
             if error_msg or voucher is None:
                 db.rollback()
