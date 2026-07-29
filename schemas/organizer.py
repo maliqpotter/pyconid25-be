@@ -29,6 +29,12 @@ class OrganizerDetailUser(BaseModel):
     twitter_username: str | None = None
 
 
+class PublicOrganizerDetailUser(OrganizerDetailUser):
+    company: str | None = None
+    job_category: str | None = None
+    job_title: str | None = None
+
+
 class OrganizerDetailType(BaseModel):
     id: str
     name: str
@@ -42,6 +48,16 @@ class OrganizerDetailResponse(BaseModel):
 
 class OrganizerDetailResponseList(BaseModel):
     results: list[OrganizerDetailResponse]
+
+
+class PublicOrganizerDetailResponse(BaseModel):
+    id: str
+    user: PublicOrganizerDetailUser
+    organizer_type: OrganizerDetailType
+
+
+class PublicOrganizerDetailResponseList(BaseModel):
+    results: list[PublicOrganizerDetailResponse]
 
 
 class OrganizerCreateRequest(BaseModel):
@@ -110,6 +126,21 @@ def organizer_detail_user_from_model(organizer: Organizer) -> OrganizerDetailUse
     )
 
 
+def organizer_public_detail_user_from_model(
+    organizer: Organizer,
+) -> PublicOrganizerDetailUser:
+    """Convert Organizer ORM model to PublicOrganizerDetailUser Pydantic model."""
+    user: User = organizer.user
+    organizer_user = organizer_detail_user_from_model(organizer)
+
+    return PublicOrganizerDetailUser(
+        **organizer_user.model_dump(),
+        company=user.company if user.share_my_job_and_company else None,
+        job_category=user.job_category if user.share_my_job_and_company else None,
+        job_title=user.job_title if user.share_my_job_and_company else None,
+    )
+
+
 def organizer_detail_response_from_model(
     organizer: Organizer,
 ) -> OrganizerDetailResponse:
@@ -125,12 +156,38 @@ def organizer_detail_response_from_model(
     )
 
 
+def organizer_public_detail_response_from_model(
+    organizer: Organizer,
+) -> PublicOrganizerDetailResponse:
+    """Convert Organizer ORM model to PublicOrganizerDetailResponse Pydantic model."""
+    organizer_type = organizer.organizer_type
+    return PublicOrganizerDetailResponse(
+        id=str(organizer.id),
+        user=organizer_public_detail_user_from_model(organizer),
+        organizer_type=OrganizerDetailType(
+            id=str(organizer_type.id),
+            name=organizer_type.name,
+        ),
+    )
+
+
 def organizer_detail_response_list_from_models(
     organizers: Sequence[Organizer],
 ) -> OrganizerDetailResponseList:
     """Convert list of Organizer ORM models to OrganizerDetailResponseList Pydantic model."""
     return OrganizerDetailResponseList(
         results=[organizer_detail_response_from_model(org) for org in organizers],
+    )
+
+
+def organizer_public_detail_response_list_from_models(
+    organizers: Sequence[Organizer],
+) -> PublicOrganizerDetailResponseList:
+    """Convert organizer models to PublicOrganizerDetailResponseList Pydantic model."""
+    return PublicOrganizerDetailResponseList(
+        results=[
+            organizer_public_detail_response_from_model(org) for org in organizers
+        ],
     )
 
 
