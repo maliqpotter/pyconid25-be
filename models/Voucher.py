@@ -1,8 +1,9 @@
 import uuid
 from sqlalchemy import UUID, String, Integer, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import mapped_column, Mapped
+from sqlalchemy.orm import mapped_column, Mapped, relationship
 from models import Base
+from models.VoucherTicket import VoucherTicket
 
 
 class Voucher(Base):
@@ -19,3 +20,6 @@ class Voucher(Base):
     )
     quota: Mapped[int] = mapped_column("quota", Integer, nullable=False)
     is_active: Mapped[bool] = mapped_column("is_active", Boolean, default=False)
+    tickets = relationship(
+        "Ticket", secondary=lambda: VoucherTicket.__table__, back_populates="vouchers"
+    )
